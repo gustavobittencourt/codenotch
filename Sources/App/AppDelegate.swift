@@ -126,6 +126,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // The queued local model and the stale ring are there so the busy
         // indicator's two edge cases can be eyeballed.
         let isDemo = ProcessInfo.processInfo.environment["CODENOTCH_DEMO"] == "1"
+        // Os anéis do ccauth (um por conta), preenchidos abaixo; o monitor de
+        // atividade lá embaixo precisa saber quais são.
+        var ccauthProviders: [CcauthAccountProvider] = []
         if isDemo {
             fleet.setSnapshots(Fixtures.snapshots())
             for (id, sessions) in Fixtures.sessions() {
@@ -177,18 +180,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let claudeProviders = claudeProfiles.map {
                 ClaudeOAuthProvider(profile: $0, displayName: claudeNames[$0.id])
             }
-            self.claudeProviders = claudeProviders
+            // ccauth: um anel por conta, no lugar dos anéis nativos da mesma
+            // família. Leitura síncrona (~0,7 s) porque os anéis precisam existir
+            // antes de a lista abaixo ser montada. Sem ccauth, nada muda.
+            if let discovered = CcauthClient.shared.discoverAccountsSync() {
+                ccauthProviders = CcauthRings.providers(from: discovered)
+            }
+            let replacesClaude = CcauthRings.replacesNativeClaude(ccauthProviders)
+            let replacesOpenCode = CcauthRings.replacesNativeOpenCode(ccauthProviders)
+            // Sem anel nativo, o renovador de token e a sonda `/usage` não têm o
+            // que renovar (o ccauth cuida dos logins): `self.claudeProviders`
+            // fica vazio e o renovador abaixo não é criado.
+            let nativeClaudeProviders = replacesClaude ? [] : claudeProviders
+            self.claudeProviders = nativeClaudeProviders
             let customProviders: [UsageProvider] = preferences.customEndpoints.filter(\.isEnabled).map { endpoint in
                 CustomEndpointProvider(endpoint: endpoint)
             }
             let remoteProviders: [UsageProvider] = preferences.remoteHosts
                 .filter { $0.isEnabled && $0.isConfigured }
                 .map { $0.makeProvider() }
-            let allProviders: [UsageProvider] = claudeProviders
+            let allProviders: [UsageProvider] = nativeClaudeProviders + ccauthProviders
                 + [CursorLocalProvider()]
                 + codexProfiles.map { CodexLocalProvider(profile: $0) }
                 + antigravityProfiles.map { AntigravityProvider(profile: $0) }
-                + [GLMProvider(), MiniMaxProvider(web: miniMaxWeb), GrokLocalProvider(), GrokBotProvider(), DevinLocalProvider(), OpenCodeProvider()]
+                + [GLMProvider(), MiniMaxProvider(web: miniMaxWeb), GrokLocalProvider(), GrokBotProvider(), DevinLocalProvider()]
+                + (replacesOpenCode ? [] : [OpenCodeProvider()])
                 + commandCodeProfiles.map { CommandCodeProvider(profile: $0) }
                 + [GitHubCopilotProvider(), KimiProvider(), KiroProvider(), AmpProvider(),
                    ApifyProvider(), KiloProvider(), HiggsfieldProvider(),
@@ -969,6 +985,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 .store(in: &cancellables)
             store.start()
             fleet.onRefresh = { [weak store] in store?.refreshNow(freshness: .fromSource) }
+            // Os mesmos passos de "Refresh now", depois de uma troca de conta.
+            fleet.dynamicMenuItems = {
+                CcauthSwitchMenu.menuEntries { [weak store] in store?.refreshNow(freshness: .fromSource) }
+            }
             fleet.onLook = { [weak store] in store?.refreshBecauseSomeoneIsLooking() }
             fleet.onRefreshProvider = { [weak store] id in
                 await store?.refresh(providerID: id, freshness: .fromSource)?.value
@@ -1014,6 +1034,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             claudeMonitors.append(monitor)
             claudeMonitorsByProfile.append((profile, monitor))
             monitors[profile.id] = monitor
+        }
+
+        // Sessões do Claude Code moram no diretório do perfil padrão seja qual
+        // for a conta ativa do ccauth: cada anel do ccauth repassa as do monitor
+        // padrão só enquanto sua conta é a ativa.
+        if let defaultMonitor = claudeMonitorsByProfile.first(where: { $0.0.slug == nil })?.1 {
+            let lease = CcauthBaseLease(base: defaultMonitor)
+            for provider in ccauthProviders where provider.family == .claude {
+                monitors[provider.id] = CcauthActiveAccountMonitor(
+                    base: defaultMonitor, family: .claude, alias: provider.alias, lease: lease)
+            }
         }
 
         // With one profile there is nothing to attribute: every session in the
