@@ -23,6 +23,10 @@ enum CcauthSwitchMenu {
     private static let sessionsNote = "Sessões do Claude Code já abertas continuam na conta anterior até serem reiniciadas."
     private static let openCodeNote = "As próximas chamadas do OpenCode Go passam a ser cobradas nesta conta."
 
+    /// Famílias com troca em andamento e o alias de destino (o item desabilitado do
+    /// menu diz para qual conta). Só a thread principal mexe.
+    @MainActor static var inProgress: [CcauthFamily: String] = [:]
+
     static func familyName(_ family: CcauthFamily) -> String {
         family == .claude ? "Claude" : "OpenCode Go"
     }
@@ -60,7 +64,13 @@ enum CcauthSwitchMenu {
                         confirm: (Alert) -> Bool,
                         showFailure: (Alert) -> Void,
                         refresh: @MainActor () -> Void) async {
+        // Uma troca por família: a segunda mexeria no mesmo estado do ccauth e
+        // abriria outro alerta. A marca vale já na confirmação e cai em qualquer saída.
+        guard inProgress[item.family] == nil else { return }
         let current = client.lastStatus?.activeAlias(family: item.family)
+        guard current != item.alias else { return }
+        inProgress[item.family] = item.alias
+        defer { inProgress[item.family] = nil }
         guard confirm(confirmation(family: item.family, current: current, target: item.alias)) else { return }
         let result = await client.switchAccount(family: item.family, alias: item.alias)
         if case .failure(let error) = result {
@@ -73,15 +83,24 @@ enum CcauthSwitchMenu {
     /// `refresh` é o mesmo "Refresh now" do notch.
     @MainActor
     static func menuEntries(client: CcauthClient = .shared,
-                            refresh: @escaping @MainActor () -> Void) -> [(title: String, action: () -> Void)] {
-        items(for: client.lastStatus).map { item in
-            let action: () -> Void = {
-                Task { @MainActor in
-                    await run(item, client: client, refresh: refresh)
-                }
+                            refresh: @escaping @MainActor () -> Void) -> [(title: String, action: () -> Void, isEnabled: Bool)] {
+        let pending = items(for: client.lastStatus)
+        var entries: [(title: String, action: () -> Void, isEnabled: Bool)] = []
+        for family in [CcauthFamily.claude, .opencode] {
+            if let target = inProgress[family] {
+                entries.append((title: "Alternando \(familyName(family)) para \(target)…", action: {}, isEnabled: false))
+                continue
             }
-            return (title: item.title, action: action)
+            for item in pending where item.family == family {
+                let action: () -> Void = {
+                    Task { @MainActor in
+                        await run(item, client: client, refresh: refresh)
+                    }
+                }
+                entries.append((title: item.title, action: action, isEnabled: true))
+            }
         }
+        return entries
     }
 
     @MainActor

@@ -30,7 +30,7 @@ final class NotchWindowController {
     /// One "Sign in to …" item per provider that needs a browser session.
     var signInItems: [(title: String, action: () -> Void)] = []
     /// Itens extras, depois de "Refresh now"; avaliados a cada abertura do menu.
-    var dynamicMenuItems: () -> [(title: String, action: () -> Void)] = { [] }
+    var dynamicMenuItems: () -> [(title: String, action: () -> Void, isEnabled: Bool)] = { [] }
     /// Driven by the notch's own chrome.
 
     /// Refetch a single provider, asked for by clicking its ring.
@@ -2015,7 +2015,7 @@ final class NotchWindowController {
             )
             item.target = menuActions
             item.representedObject = entry.action
-            item.isEnabled = true
+            item.isEnabled = entry.isEnabled
             menu.addItem(item)
         }
 

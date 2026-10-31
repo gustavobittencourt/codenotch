@@ -115,7 +115,7 @@ final class NotchFleet {
     }
     var signInItems: [(title: String, action: () -> Void)] = []
     /// Itens extras do menu, avaliados a cada abertura. Ver `CcauthSwitchMenu`.
-    var dynamicMenuItems: () -> [(title: String, action: () -> Void)] = { [] }
+    var dynamicMenuItems: () -> [(title: String, action: () -> Void, isEnabled: Bool)] = { [] }
     /// An ⌥-drag on any one panel settled at a new offset. Persisting it is
     /// Preferences' job, same division `apply(edge:)` already keeps.
     var onReposition: ((CGFloat) -> Void)?

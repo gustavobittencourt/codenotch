@@ -6,10 +6,16 @@ private final class Recorder: @unchecked Sendable {
     private let lock = NSLock()
     private var recorded: [[String]] = []
     var reply: (stdout: Data, exit: Int32) = (Data(#"{"ok":true}"#.utf8), 0)
+    /// Segura só o `switch`, para dar tempo de olhar o menu com a troca em andamento.
+    var switchDelay: TimeInterval = 0
     var calls: [[String]] { lock.withLock { recorded } }
+    var switchCalls: [[String]] { calls.filter { $0.contains("switch") } }
     var runner: CcauthClient.Runner {
         { [self] args, _ in
             lock.withLock { recorded.append(args) }
+            if switchDelay > 0, args.contains("switch") {
+                try await Task.sleep(nanoseconds: UInt64(switchDelay * 1_000_000_000))
+            }
             return reply
         }
     }
@@ -145,6 +151,113 @@ final class CcauthSwitchMenuTests: XCTestCase {
         let callsBefore = recorder.calls.count
         _ = try await client.status()
         XCTAssertEqual(recorder.calls.count, callsBefore + 1)
+    }
+
+    // MARK: - Troca em andamento
+
+    private func clientWithStatus(_ recorder: Recorder) async throws -> CcauthClient {
+        recorder.reply = (CcauthFixture.statusData, 0)
+        let client = CcauthClient(runner: recorder.runner)
+        _ = try await client.status()
+        recorder.reply = (Data(#"{"ok":true}"#.utf8), 0)
+        return client
+    }
+
+    private func waitUntilInProgress(_ family: CcauthFamily) async throws {
+        for _ in 0..<200 where CcauthSwitchMenu.inProgress[family] == nil {
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+        XCTAssertNotNil(CcauthSwitchMenu.inProgress[family], "a troca não chegou a começar")
+    }
+
+    func testFamilyInProgressShowsOneDisabledEntryAndTheOtherFamilyKeepsItsItems() async throws {
+        let recorder = Recorder()
+        recorder.switchDelay = 0.4
+        let client = try await clientWithStatus(recorder)
+        let running = Task { @MainActor in
+            await CcauthSwitchMenu.perform(
+                item(.claude, "Allan"), client: client, confirm: { _ in true },
+                showFailure: { _ in }, refresh: {})
+        }
+        try await waitUntilInProgress(.claude)
+        let during = CcauthSwitchMenu.menuEntries(client: client, refresh: {})
+        XCTAssertEqual(during.map(\.title), ["Alternando Claude para Allan…", "Alternar OpenCode Go para Default…"])
+        XCTAssertEqual(during.map(\.isEnabled), [false, true])
+        await running.value
+        let after = CcauthSwitchMenu.menuEntries(client: client, refresh: {})
+        XCTAssertEqual(after.map(\.title), ["Alternar Claude para Allan…", "Alternar OpenCode Go para Default…"])
+        XCTAssertEqual(after.map(\.isEnabled), [true, true])
+    }
+
+    func testARequestForAFamilyAlreadyInProgressIsIgnored() async throws {
+        let recorder = Recorder()
+        recorder.switchDelay = 0.4
+        let client = try await clientWithStatus(recorder)
+        let running = Task { @MainActor in
+            await CcauthSwitchMenu.perform(
+                item(.claude, "Allan"), client: client, confirm: { _ in true },
+                showFailure: { _ in }, refresh: {})
+        }
+        try await waitUntilInProgress(.claude)
+        var asked = 0
+        var refreshed = 0
+        await CcauthSwitchMenu.perform(
+            item(.claude, "Allan"), client: client, confirm: { _ in asked += 1; return true },
+            showFailure: { _ in }, refresh: { refreshed += 1 })
+        XCTAssertEqual(asked, 0, "nem o alerta de confirmação abre de novo")
+        XCTAssertEqual(refreshed, 0)
+        await running.value
+        XCTAssertEqual(recorder.switchCalls.count, 1)
+    }
+
+    func testAnotherFamilyCanSwitchWhileOneIsInProgress() async throws {
+        let recorder = Recorder()
+        recorder.switchDelay = 0.4
+        let client = try await clientWithStatus(recorder)
+        let running = Task { @MainActor in
+            await CcauthSwitchMenu.perform(
+                item(.claude, "Allan"), client: client, confirm: { _ in true },
+                showFailure: { _ in }, refresh: {})
+        }
+        try await waitUntilInProgress(.claude)
+        var asked = 0
+        recorder.switchDelay = 0
+        await CcauthSwitchMenu.perform(
+            item(.opencode, "Default"), client: client, confirm: { _ in asked += 1; return true },
+            showFailure: { _ in }, refresh: {})
+        XCTAssertEqual(asked, 1)
+        await running.value
+        XCTAssertEqual(recorder.switchCalls.count, 2)
+    }
+
+    func testCancellingOrFailingReleasesTheFamily() async throws {
+        let recorder = Recorder()
+        let client = try await clientWithStatus(recorder)
+        await CcauthSwitchMenu.perform(
+            item(.claude, "Allan"), client: client, confirm: { _ in false },
+            showFailure: { _ in }, refresh: {})
+        XCTAssertNil(CcauthSwitchMenu.inProgress[.claude])
+        recorder.reply = (Data(#"{"ok":false,"error":"x"}"#.utf8), 1)
+        await CcauthSwitchMenu.perform(
+            item(.claude, "Allan"), client: client, confirm: { _ in true },
+            showFailure: { _ in }, refresh: {})
+        XCTAssertNil(CcauthSwitchMenu.inProgress[.claude])
+    }
+
+    // MARK: - Conta já ativa
+
+    func testSwitchingToTheAlreadyActiveAccountDoesNothing() async throws {
+        let recorder = Recorder()
+        let client = try await clientWithStatus(recorder)
+        var asked = 0
+        var refreshed = 0
+        await CcauthSwitchMenu.perform(
+            CcauthSwitchMenu.Item(family: .claude, alias: "Gustavo"), client: client,
+            confirm: { _ in asked += 1; return true },
+            showFailure: { _ in }, refresh: { refreshed += 1 })
+        XCTAssertEqual(asked, 0)
+        XCTAssertEqual(refreshed, 0)
+        XCTAssertEqual(recorder.switchCalls.count, 0)
     }
 
     func testFailedSwitchShowsTheErrorAndStillRefreshes() async throws {
@@ -326,8 +439,8 @@ final class CcauthContextMenuTests: XCTestCase {
         let controller = NotchWindowController()
         var ran: [String] = []
         controller.dynamicMenuItems = { [
-            (title: "Alternar Claude para Allan…", action: { ran.append("Allan") }),
-            (title: "Alternar OpenCode Go para Default…", action: { ran.append("Default") }),
+            (title: "Alternar Claude para Allan…", action: { ran.append("Allan") }, isEnabled: true),
+            (title: "Alternar OpenCode Go para Default…", action: { ran.append("Default") }, isEnabled: true),
         ] }
         let menu = controller.contextMenuForTesting()
         let list = titles(menu)
@@ -342,6 +455,17 @@ final class CcauthContextMenuTests: XCTestCase {
         XCTAssertEqual(ran, ["Default"])
     }
 
+    func testADisabledEntryIsShownDisabled() throws {
+        let controller = NotchWindowController()
+        controller.dynamicMenuItems = { [
+            (title: "Alternando Claude para Allan…", action: {}, isEnabled: false),
+            (title: "Alternar OpenCode Go para Default…", action: {}, isEnabled: true),
+        ] }
+        let menu = controller.contextMenuForTesting()
+        XCTAssertEqual(menu.items.first { $0.title == "Alternando Claude para Allan…" }?.isEnabled, false)
+        XCTAssertEqual(menu.items.first { $0.title == "Alternar OpenCode Go para Default…" }?.isEnabled, true)
+    }
+
     func testMenuHasNoExtraItemsByDefault() {
         let controller = NotchWindowController()
         XCTAssertFalse(titles(controller.contextMenuForTesting()).contains { $0.hasPrefix("Alternar") })
@@ -349,14 +473,14 @@ final class CcauthContextMenuTests: XCTestCase {
 
     func testTheFleetHandsItsDynamicItemsToEveryControllerAtOpenTime() throws {
         let fleet = NotchFleet(scope: .mainDisplay, edge: .right)
-        var entries = [(title: String, action: () -> Void)]()
+        var entries = [(title: String, action: () -> Void, isEnabled: Bool)]()
         fleet.dynamicMenuItems = { entries }
         fleet.reconcileForTesting()
         defer { fleet.stop() }
         let controller = try XCTUnwrap(fleet.controllersForTesting.first)
         XCTAssertFalse(titles(controller.contextMenuForTesting()).contains { $0.hasPrefix("Alternar") })
         // Avaliado a cada abertura: o que muda depois entra no menu seguinte.
-        entries = [(title: "Alternar Claude para Allan…", action: {})]
+        entries = [(title: "Alternar Claude para Allan…", action: {}, isEnabled: true)]
         XCTAssertTrue(titles(controller.contextMenuForTesting()).contains("Alternar Claude para Allan…"))
     }
 }
