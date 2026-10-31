@@ -1,0 +1,150 @@
+{
+ "schema": 2,
+ "ok": true,
+ "generated_at": "2026-10-31T05:31:19Z",
+ "warnings": [],
+ "claude": {
+  "ok": true,
+  "active": "Gustavo",
+  "live_matches_active": true,
+  "accounts": [
+   {
+    "alias": "Allan",
+    "email": "allan@example.com",
+    "email_confirmed": false,
+    "active": false,
+    "in_use": false,
+    "login_expires_at": "2026-10-27T23:56:17Z",
+    "versions": 3,
+    "quota": {
+     "session": {
+      "used_percent": 0.0,
+      "resets_at": null
+     },
+     "week": {
+      "used_percent": 17.0,
+      "resets_at": "2026-11-01T14:00:00Z"
+     },
+     "fable": {
+      "used_percent": 2.0,
+      "resets_at": "2026-11-01T14:00:00Z"
+     },
+     "fetched_at": "2026-10-28T04:48:05Z",
+     "stale": true,
+     "stale_reason": "refresh falhou — `ccauth claude login` de novo"
+    }
+   },
+   {
+    "alias": "Gustavo",
+    "email": "gustavo@example.com",
+    "email_confirmed": true,
+    "active": true,
+    "in_use": true,
+    "login_expires_at": "2026-11-25T04:05:18Z",
+    "versions": 1,
+    "quota": {
+     "session": {
+      "used_percent": 7.0,
+      "resets_at": "2026-10-31T09:59:59Z"
+     },
+     "week": {
+      "used_percent": 68.0,
+      "resets_at": "2026-11-02T23:59:59Z"
+     },
+     "fable": {
+      "used_percent": 3.0,
+      "resets_at": "2026-11-02T23:59:59Z"
+     },
+     "fetched_at": "2026-10-31T05:29:05Z",
+     "stale": false
+    }
+   }
+  ]
+ },
+ "opencode": {
+  "ok": true,
+  "available": true,
+  "unavailable_reason": null,
+  "active": "Personal",
+  "accounts": [
+   {
+    "alias": "Personal",
+    "credential_id": "cred_personal",
+    "kind": "oauth",
+    "email": "personal@example.com",
+    "workspace": "Personal",
+    "active": true,
+    "login_expires_at": "2026-11-28T06:12:43Z",
+    "key_invalid": false,
+    "quota": {
+     "rolling": {
+      "used_percent": 0.0,
+      "resets_at": "2026-10-31T09:57:12Z",
+      "exhausted": false
+     },
+     "weekly": {
+      "used_percent": 43.0,
+      "resets_at": "2026-11-02T00:00:00Z",
+      "exhausted": false
+     },
+     "monthly": {
+      "used_percent": 21.0,
+      "resets_at": "2026-11-29T06:04:38Z",
+      "exhausted": false
+     },
+     "fetched_at": "2026-10-31T05:29:05Z",
+     "stale": false,
+     "stale_reason": null
+    }
+   },
+   {
+    "alias": "Default",
+    "credential_id": "cred_default",
+    "kind": "oauth",
+    "email": "default@example.com",
+    "workspace": "Default",
+    "active": false,
+    "login_expires_at": "2026-11-20T15:40:40Z",
+    "key_invalid": false,
+    "quota": {
+     "rolling": {
+      "used_percent": 0.0,
+      "resets_at": "2026-10-31T10:29:06Z",
+      "exhausted": false
+     },
+     "weekly": {
+      "used_percent": 0.0,
+      "resets_at": "2026-11-02T00:00:00Z",
+      "exhausted": false
+     },
+     "monthly": {
+      "used_percent": 100.0,
+      "resets_at": "2026-11-09T01:01:20Z",
+      "exhausted": true
+     },
+     "fetched_at": "2026-10-31T05:29:05Z",
+     "stale": false,
+     "stale_reason": null
+    }
+   },
+   {
+    "alias": "API key",
+    "credential_id": "cred_apikey",
+    "kind": "key",
+    "email": null,
+    "workspace": null,
+    "active": false,
+    "login_expires_at": null,
+    "key_invalid": true,
+    "quota": {
+     "rolling": null,
+     "weekly": null,
+     "monthly": null,
+     "fetched_at": null,
+     "stale": true,
+     "stale_reason": "opencode.ai respondeu HTTP 401"
+    }
+   }
+  ]
+ }
+}
