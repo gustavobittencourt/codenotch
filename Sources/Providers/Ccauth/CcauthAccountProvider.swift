@@ -22,8 +22,8 @@ struct CcauthAccountProvider: UsageProvider {
         self.glyph = family == .claude ? .claude : .opencode
     }
 
-    /// `ccauth-<família>-<alias em minúsculas, o que não é alfanumérico vira "-">`.
-    static func providerID(family: CcauthFamily, alias: String) -> String {
+    /// Alias em minúsculas; o que não é letra nem dígito vira "-" (sem repetir nem sobrar nas pontas).
+    static func slug(of alias: String) -> String {
         var slug = ""
         for character in alias.lowercased() {
             if character.isLetter || character.isNumber {
@@ -33,7 +33,12 @@ struct CcauthAccountProvider: UsageProvider {
             }
         }
         while slug.hasSuffix("-") { slug.removeLast() }
-        return "ccauth-\(family.rawValue)-\(slug)"
+        return slug
+    }
+
+    /// `ccauth-<família>-<slug do alias>`.
+    static func providerID(family: CcauthFamily, alias: String) -> String {
+        "ccauth-\(family.rawValue)-\(slug(of: alias))"
     }
 
     var signInRoute: SignInRoute {

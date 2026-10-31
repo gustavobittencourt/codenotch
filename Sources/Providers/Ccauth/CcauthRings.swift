@@ -65,9 +65,24 @@ enum CcauthRings {
     }
 
     static func providers(from accounts: [CcauthKnownAccount], client: CcauthClient = .shared) -> [CcauthAccountProvider] {
-        accounts.filter { !$0.keyInvalid }.map {
-            CcauthAccountProvider(family: $0.family, alias: $0.alias, email: $0.email, client: client)
+        var seen = Set<String>()
+        var result: [CcauthAccountProvider] = []
+        for account in accounts where !account.keyInvalid {
+            // O id é a identidade do anel no store: alias que vira slug vazio ou
+            // repete um id ("Allan"/"allan") não pode virar um segundo anel.
+            guard !CcauthAccountProvider.slug(of: account.alias).isEmpty else {
+                Log.usage.notice("ccauth: alias sem letra nem dígito ignorado (\(account.family.rawValue, privacy: .public))")
+                continue
+            }
+            let provider = CcauthAccountProvider(family: account.family, alias: account.alias,
+                                                 email: account.email, client: client)
+            guard seen.insert(provider.id).inserted else {
+                Log.usage.notice("ccauth: alias repetido ignorado: \(provider.id, privacy: .public)")
+                continue
+            }
+            result.append(provider)
         }
+        return result
     }
 
     /// Com anel de conta Claude do ccauth, o anel nativo do Claude sai (seria a

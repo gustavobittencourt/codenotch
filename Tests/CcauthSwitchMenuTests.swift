@@ -281,6 +281,28 @@ final class CcauthRingsTests: XCTestCase {
         XCTAssertFalse(CcauthRings.replacesNativeOpenCode(providers))
     }
 
+    func testAliasesThatShareAnIDGetOneRingOnly() {
+        let accounts = [
+            CcauthKnownAccount(family: .claude, alias: "Allan", email: "a@example.com", keyInvalid: false),
+            CcauthKnownAccount(family: .claude, alias: "allan", email: "b@example.com", keyInvalid: false),
+            CcauthKnownAccount(family: .opencode, alias: "Allan", email: nil, keyInvalid: false),
+        ]
+        let providers = CcauthRings.providers(from: accounts)
+        XCTAssertEqual(providers.map(\.id), ["ccauth-claude-allan", "ccauth-opencode-allan"],
+                       "a segunda \"allan\" do Claude é pulada; a mesma alias em outra família não colide")
+        XCTAssertEqual(providers.first?.alias, "Allan")
+        XCTAssertEqual(providers.first?.email, "a@example.com")
+    }
+
+    func testAliasWithoutAnyLetterOrDigitGetsNoRing() {
+        let accounts = [
+            CcauthKnownAccount(family: .claude, alias: "***", email: nil, keyInvalid: false),
+            CcauthKnownAccount(family: .claude, alias: "  ", email: nil, keyInvalid: false),
+            CcauthKnownAccount(family: .claude, alias: "Ok", email: nil, keyInvalid: false),
+        ]
+        XCTAssertEqual(CcauthRings.providers(from: accounts).map(\.id), ["ccauth-claude-ok"])
+    }
+
     func testRingIDsStartConnectedLikeTheNativeClaudeOnes() {
         XCTAssertTrue(CcauthRings.isCcauth(providerID: "ccauth-claude-allan"))
         XCTAssertTrue(CcauthRings.isCcauth(providerID: "ccauth-opencode-default"))
