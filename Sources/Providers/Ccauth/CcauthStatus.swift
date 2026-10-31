@@ -44,6 +44,19 @@ struct CcauthStatus: Decodable, Equatable {
     }
 }
 
+extension CcauthStatus {
+    /// A conta ativa da família: a que o ccauth nomeia no topo da família ou,
+    /// sem isso, a que traz `active: true`.
+    func activeAlias(family: CcauthFamily) -> String? {
+        switch family {
+        case .claude:
+            return claude?.active ?? claude?.accounts?.first { $0.active == true }?.alias
+        case .opencode:
+            return opencode?.active ?? opencode?.accounts?.first { $0.active == true }?.alias
+        }
+    }
+}
+
 struct CcauthClaudeFamily: Decodable, Equatable {
     var ok: Bool?
     var active: String?

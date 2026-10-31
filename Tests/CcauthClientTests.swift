@@ -1,4 +1,5 @@
 
+import Combine
 import XCTest
 @testable import Codenotch
 
@@ -109,6 +110,56 @@ final class CcauthClientTests: XCTestCase {
         XCTAssertNil(client.lastStatus)
         _ = try await client.status()
         XCTAssertEqual(client.lastStatus?.claude?.active, "Gustavo")
+    }
+
+    // MARK: - statusPublisher
+
+    func testStatusPublisherEmitsWhenTheStatusChangesAndNotForTheSameStatus() async throws {
+        let fake = FakeRunner()
+        let client = make(fake)
+        var received: [CcauthStatus] = []
+        let subscription = client.statusPublisher.sink { received.append($0) }
+        defer { subscription.cancel() }
+
+        _ = try await client.status()
+        XCTAssertEqual(received.count, 1)
+
+        client.invalidate()
+        _ = try await client.status()   // mesma saída: não é mudança
+        XCTAssertEqual(received.count, 1)
+
+        fake.reply = (try CcauthFixture.statusData(activeClaude: "Allan"), 0)
+        client.invalidate()
+        _ = try await client.status()
+        XCTAssertEqual(received.count, 2)
+        XCTAssertEqual(received.last?.claude?.active, "Allan")
+        XCTAssertEqual(received.last?.claude?.accounts?.first { $0.alias == "Allan" }?.active, true)
+    }
+
+    func testStatusPublisherReplaysTheLatestStatusToALateSubscriber() async throws {
+        let client = make(FakeRunner())
+        _ = try await client.status()
+        var received: [CcauthStatus] = []
+        let subscription = client.statusPublisher.sink { received.append($0) }
+        defer { subscription.cancel() }
+        XCTAssertEqual(received.count, 1)
+    }
+
+    func testStatusPublisherIsSilentBeforeAnyRead() {
+        let client = make(FakeRunner())
+        var received = 0
+        let subscription = client.statusPublisher.sink { _ in received += 1 }
+        defer { subscription.cancel() }
+        XCTAssertEqual(received, 0)
+    }
+
+    func testStatusPublisherCarriesTheDiscoveredStatus() {
+        let client = make(FakeRunner())
+        var received: [CcauthStatus] = []
+        let subscription = client.statusPublisher.sink { received.append($0) }
+        defer { subscription.cancel() }
+        XCTAssertNotNil(client.discoverAccountsSync())
+        XCTAssertEqual(received.count, 1)
     }
 
     func testSchema3IsRejected() async throws {

@@ -159,6 +159,23 @@ enum CcauthFixture {
 
     static var statusData: Data { Data(statusJSON.utf8) }
 
+    /// A amostra com outra conta ativa em cada família (a troca que o `ccauth switch` faria).
+    static func statusData(activeClaude: String? = nil, activeOpenCode: String? = nil) throws -> Data {
+        var root = try XCTUnwrap(JSONSerialization.jsonObject(with: statusData) as? [String: Any])
+        for (family, alias) in [("claude", activeClaude), ("opencode", activeOpenCode)] {
+            guard let alias, var block = root[family] as? [String: Any],
+                  let accounts = block["accounts"] as? [[String: Any]] else { continue }
+            block["active"] = alias
+            block["accounts"] = accounts.map { account in
+                var account = account
+                account["active"] = (account["alias"] as? String) == alias
+                return account
+            }
+            root[family] = block
+        }
+        return try JSONSerialization.data(withJSONObject: root)
+    }
+
     static func status() throws -> CcauthStatus {
         try CcauthStatus.decode(statusData)
     }

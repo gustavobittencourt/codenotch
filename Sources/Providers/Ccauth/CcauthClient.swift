@@ -1,4 +1,5 @@
 
+import Combine
 import Foundation
 
 enum CcauthError: Error, Equatable, LocalizedError {
@@ -45,6 +46,7 @@ final class CcauthClient: @unchecked Sendable {
     /// no cache o que já nasceu velho.
     private var generation = 0
     private var latest: CcauthStatus?
+    private let latestSubject = CurrentValueSubject<CcauthStatus?, Never>(nil)
 
     init(runner: @escaping Runner = CcauthClient.runInstalledBinary, now: @escaping () -> Date = Date.init) {
         self.runner = runner
@@ -53,6 +55,13 @@ final class CcauthClient: @unchecked Sendable {
 
     /// O último status lido, para o menu montar os itens sem `await`.
     var lastStatus: CcauthStatus? { lock.withLock { latest } }
+
+    /// Emite o status mais recente a quem assina e a cada leitura que o muda
+    /// (por exemplo, a conta ativa trocou). Leitura idêntica à anterior não
+    /// emite, para quem escuta não refazer trabalho à toa.
+    var statusPublisher: AnyPublisher<CcauthStatus, Never> {
+        latestSubject.compactMap { $0 }.removeDuplicates().eraseToAnyPublisher()
+    }
 
     func status() async throws -> CcauthStatus {
         enum Pending {
@@ -75,12 +84,15 @@ final class CcauthClient: @unchecked Sendable {
                     self.lock.withLock { if self.generation == started { self.inflight = nil } }
                     throw error
                 }
-                self.lock.withLock {
-                    guard self.generation == started else { return }
+                let recorded: Bool = self.lock.withLock {
+                    guard self.generation == started else { return false }
                     self.cached = (status, self.now())
                     self.latest = status
                     self.inflight = nil
+                    return true
                 }
+                // Fora do lock: quem assina pode ler `lastStatus` de dentro do sink.
+                if recorded { self.latestSubject.send(status) }
                 return status
             }
             inflight = task
@@ -118,6 +130,7 @@ final class CcauthClient: @unchecked Sendable {
         // se ele não o respeitar.
         guard semaphore.wait(timeout: .now() + 40) == .success, let status = box.status else { return nil }
         lock.withLock { latest = status }
+        latestSubject.send(status)
         return status
     }
 
