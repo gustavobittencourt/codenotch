@@ -116,14 +116,19 @@ targets:
         # Set explicitly so Sparkle never asks on first launch. Left unset, it
         # shows a "check for updates automatically?" prompt, which is exactly
         # the permission this is meant to avoid.
-        SUEnableAutomaticChecks: true
+        # Off in this fork: its appcast is the official one, so Sparkle would
+        # replace the fork with the official Codenotch. `Updater` also stays
+        # inert for any bundle id other than the official one.
+        SUEnableAutomaticChecks: false
         # Never downloads unasked: a new version is offered in the notch and
         # installed when Update is chosen — see `Updater`.
         SUAutomaticallyUpdate: false
         SUScheduledCheckInterval: 86400
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.vinz.codenotch
+        # Own identity: the fork must not share preferences, the keychain
+        # grant or the single-instance retirement with the official app.
+        PRODUCT_BUNDLE_IDENTIFIER: im.gustavo.codenotch-ccauth
         GENERATE_INFOPLIST_FILE: "NO"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         SWIFT_EMIT_LOC_STRINGS: "YES"
@@ -145,7 +150,7 @@ targets:
       - target: Codenotch
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.vinz.codenotch.tests
+        PRODUCT_BUNDLE_IDENTIFIER: im.gustavo.codenotch-ccauth.tests
         GENERATE_INFOPLIST_FILE: "YES"
 
 schemes:

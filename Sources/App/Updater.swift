@@ -84,6 +84,7 @@ final class Updater: NSObject, ObservableObject, SPUUpdaterDelegate {
     /// updater is lazy so that `self` exists before it is handed over as the
     /// delegate.
     func start() {
+        guard Self.isOfficialBuild else { return }
         guard !started else { return }
         started = true
         sparkle.automaticallyDownloadsUpdates = false
@@ -98,6 +99,12 @@ final class Updater: NSObject, ObservableObject, SPUUpdaterDelegate {
         }
     }
     private var started = false
+
+    /// O appcast é o do app oficial: num fork com outro bundle id, qualquer
+    /// verificação instalaria o Codenotch oficial por cima dele.
+    private static var isOfficialBuild: Bool {
+        Bundle.main.bundleIdentifier == "com.vinz.codenotch"
+    }
 
     // MARK: - The prompt in the notch
 
@@ -218,6 +225,7 @@ final class Updater: NSObject, ObservableObject, SPUUpdaterDelegate {
     /// This one *does* show UI — it was asked for, so silence would read as a
     /// broken button.
     func checkNow() {
+        guard Self.isOfficialBuild else { return }
         start()
         outcome = .checking
         sparkle.checkForUpdates()
