@@ -52,6 +52,11 @@ struct CcauthAccountProvider: UsageProvider {
         } catch {
             throw UsageProviderError.apiError(error.localizedDescription)
         }
+        // Família que o ccauth não leu não é conta que sumiu: pedir login de novo
+        // seria o conselho errado.
+        if let failure = status.failure(family: family) {
+            throw failure.busy ? UsageProviderError.timedOut : UsageProviderError.apiError(failure.message)
+        }
         switch family {
         case .claude:
             guard let account = status.claude?.accounts?.first(where: { $0.alias == alias }) else {

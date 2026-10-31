@@ -218,6 +218,21 @@ final class CcauthStatusTests: XCTestCase {
         XCTAssertEqual(status.opencode?.unavailableReason, "sem opencode")
     }
 
+    func testDecodesAFamilyThatFailedOrIsBusy() throws {
+        let json = #"""
+        {"schema":2,"ok":true,
+         "claude":{"ok":false,"busy":true,"error":"outro ccauth está rodando"},
+         "opencode":{"ok":false,"busy":false,"error":"Boom: falhou"}}
+        """#
+        let status = try CcauthStatus.decode(Data(json.utf8))
+        XCTAssertEqual(status.claude?.ok, false)
+        XCTAssertEqual(status.claude?.busy, true)
+        XCTAssertEqual(status.claude?.error, "outro ccauth está rodando")
+        XCTAssertNil(status.claude?.accounts)
+        XCTAssertEqual(status.opencode?.busy, false)
+        XCTAssertEqual(status.opencode?.error, "Boom: falhou")
+    }
+
     func testDecodesFractionalSecondDates() throws {
         let json = #"{"schema":2,"ok":true,"generated_at":"2026-10-31T05:31:19.250Z"}"#
         let status = try CcauthStatus.decode(Data(json.utf8))

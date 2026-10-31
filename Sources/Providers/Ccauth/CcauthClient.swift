@@ -84,15 +84,17 @@ final class CcauthClient: @unchecked Sendable {
                     self.lock.withLock { if self.generation == started { self.inflight = nil } }
                     throw error
                 }
+                var merged = status
                 let recorded: Bool = self.lock.withLock {
                     guard self.generation == started else { return false }
                     self.cached = (status, self.now())
-                    self.latest = status
+                    merged = status.keepingLastGoodFamilies(from: self.latest)
+                    self.latest = merged
                     self.inflight = nil
                     return true
                 }
                 // Fora do lock: quem assina pode ler `lastStatus` de dentro do sink.
-                if recorded { self.latestSubject.send(status) }
+                if recorded { self.latestSubject.send(merged) }
                 return status
             }
             inflight = task

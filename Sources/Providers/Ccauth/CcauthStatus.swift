@@ -57,14 +57,49 @@ extension CcauthStatus {
     }
 }
 
+/// O ccauth trava cada família à parte: com o lock ocupado ou um erro ele devolve
+/// `{"ok": false, "busy": …, "error": …}` sem `accounts`, e o `ok` do topo vale
+/// se *alguma* família deu certo.
+extension CcauthStatus {
+    /// Por que a família não foi lida, ou nil se foi.
+    func failure(family: CcauthFamily) -> (busy: Bool, message: String)? {
+        let state: (ok: Bool?, busy: Bool?, error: String?)
+        switch family {
+        case .claude:   state = (claude?.ok, claude?.busy, claude?.error)
+        case .opencode: state = (opencode?.ok, opencode?.busy, opencode?.error)
+        }
+        guard state.ok == false else { return nil }
+        let message = state.error.flatMap { $0.isEmpty ? nil : $0 } ?? "o ccauth não leu esta família"
+        return (state.busy == true, message)
+    }
+
+    /// Este status, mas uma família que falhou agora não apaga a última que veio
+    /// boa: o menu e a conta ativa seguem nela até a próxima leitura certa.
+    func keepingLastGoodFamilies(from previous: CcauthStatus?) -> CcauthStatus {
+        guard let previous else { return self }
+        var merged = self
+        if failure(family: .claude) != nil, previous.failure(family: .claude) == nil, previous.claude != nil {
+            merged.claude = previous.claude
+        }
+        if failure(family: .opencode) != nil, previous.failure(family: .opencode) == nil, previous.opencode != nil {
+            merged.opencode = previous.opencode
+        }
+        return merged
+    }
+}
+
 struct CcauthClaudeFamily: Decodable, Equatable {
     var ok: Bool?
+    var busy: Bool?
+    var error: String?
     var active: String?
     var accounts: [CcauthClaudeAccount]?
 }
 
 struct CcauthOpenCodeFamily: Decodable, Equatable {
     var ok: Bool?
+    var busy: Bool?
+    var error: String?
     var available: Bool?
     var unavailableReason: String?
     var active: String?

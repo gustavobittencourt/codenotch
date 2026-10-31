@@ -385,4 +385,84 @@ final class CcauthClientTests: XCTestCase {
         XCTAssertEqual(active.glyph, .claude)
         XCTAssertEqual(inactive.glyph, .opencode)
     }
+
+    // MARK: - Família com ok:false
+
+    /// Claude falhou (ocupado ou erro); OpenCode veio bom.
+    private static func claudeFailed(busy: Bool, error: String) -> (stdout: Data, exit: Int32) {
+        let json = """
+        {"schema":2,"ok":true,
+         "claude":{"ok":false,"busy":\(busy),"error":"\(error)"},
+         "opencode":{"ok":true,"available":true,"active":"Default","accounts":[
+           {"alias":"Default","quota":{"rolling":{"used_percent":10}}}]}}
+        """
+        return (Data(json.utf8), 0)
+    }
+
+    func testProviderOfABusyFamilyTimesOutInsteadOfNeedingAuth() async throws {
+        let fake = FakeRunner()
+        fake.reply = Self.claudeFailed(busy: true, error: "ocupado")
+        let provider = CcauthAccountProvider(family: .claude, alias: "Gustavo", email: nil, client: make(fake))
+        do {
+            _ = try await provider.fetchSnapshot()
+            XCTFail("expected timedOut")
+        } catch UsageProviderError.timedOut {
+        }
+    }
+
+    func testProviderOfAFailedFamilyReportsTheCcauthError() async throws {
+        let fake = FakeRunner()
+        fake.reply = Self.claudeFailed(busy: false, error: "RuntimeError: quebrou")
+        let provider = CcauthAccountProvider(family: .claude, alias: "Gustavo", email: nil, client: make(fake))
+        do {
+            _ = try await provider.fetchSnapshot()
+            XCTFail("expected apiError")
+        } catch UsageProviderError.apiError(let message) {
+            XCTAssertEqual(message, "RuntimeError: quebrou")
+        }
+    }
+
+    func testTheOtherFamilyKeepsWorkingWhenOneFamilyFailed() async throws {
+        let fake = FakeRunner()
+        fake.reply = Self.claudeFailed(busy: true, error: "ocupado")
+        let provider = CcauthAccountProvider(family: .opencode, alias: "Default", email: nil, client: make(fake))
+        let snapshot = try await provider.fetchSnapshot()
+        XCTAssertEqual(snapshot.windows.map(\.id), ["rolling"])
+    }
+
+    func testAFailedFamilyDoesNotReplaceTheLastGoodOneInLastStatus() async throws {
+        let fake = FakeRunner()
+        let client = make(fake)
+        _ = try await client.status()
+        client.invalidate()
+        fake.reply = Self.claudeFailed(busy: true, error: "ocupado")
+        let raw = try await client.status()
+        XCTAssertEqual(raw.claude?.ok, false, "quem lê o status vê a falha (o anel precisa dela)")
+        let last = try XCTUnwrap(client.lastStatus)
+        XCTAssertEqual(last.claude?.accounts?.map(\.alias), ["Allan", "Gustavo"], "o menu segue na última família boa")
+        XCTAssertEqual(last.activeAlias(family: .claude), "Gustavo")
+        XCTAssertEqual(last.opencode?.accounts?.map(\.alias), ["Default"], "a família boa é a nova")
+    }
+
+    func testAFamilyThatNeverWorkedStaysFailedInLastStatus() async throws {
+        let fake = FakeRunner()
+        fake.reply = Self.claudeFailed(busy: false, error: "quebrou")
+        let client = make(fake)
+        _ = try await client.status()
+        XCTAssertEqual(client.lastStatus?.claude?.ok, false)
+        XCTAssertNil(client.lastStatus?.activeAlias(family: .claude))
+    }
+
+    func testTheStatusPublisherAlsoCarriesTheMergedStatus() async throws {
+        let fake = FakeRunner()
+        let client = make(fake)
+        var received: [CcauthStatus] = []
+        let subscription = client.statusPublisher.sink { received.append($0) }
+        defer { subscription.cancel() }
+        _ = try await client.status()
+        client.invalidate()
+        fake.reply = Self.claudeFailed(busy: true, error: "ocupado")
+        _ = try await client.status()
+        XCTAssertEqual(received.last?.claude?.accounts?.map(\.alias), ["Allan", "Gustavo"])
+    }
 }
