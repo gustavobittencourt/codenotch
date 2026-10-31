@@ -181,11 +181,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 ClaudeOAuthProvider(profile: $0, displayName: claudeNames[$0.id])
             }
             // ccauth: um anel por conta, no lugar dos anéis nativos da mesma
-            // família. Leitura síncrona (~0,7 s) porque os anéis precisam existir
-            // antes de a lista abaixo ser montada. Sem ccauth, nada muda.
-            if let discovered = CcauthClient.shared.discoverAccountsSync() {
-                ccauthProviders = CcauthRings.providers(from: discovered)
-            }
+            // família. Leitura síncrona (~1 s, do cache do ccauth) porque os anéis
+            // precisam existir antes de a lista abaixo ser montada; se o ccauth
+            // falhar, valem as contas lembradas. Sem ccauth, nada muda.
+            ccauthProviders = CcauthRings.discover()
             let replacesClaude = CcauthRings.replacesNativeClaude(ccauthProviders)
             let replacesOpenCode = CcauthRings.replacesNativeOpenCode(ccauthProviders)
             // Sem anel nativo, o renovador de token e a sonda `/usage` não têm o

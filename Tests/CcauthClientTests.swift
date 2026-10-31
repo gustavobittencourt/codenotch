@@ -199,11 +199,13 @@ final class CcauthClientTests: XCTestCase {
 
     // MARK: - discoverAccountsSync()
 
-    func testDiscoverRunsWithoutUsageAndReturnsTheAccounts() {
+    func testDiscoverReadsTheCcauthCacheSoKeyInvalidIsRight() {
         let fake = FakeRunner()
         let status = make(fake).discoverAccountsSync()
         XCTAssertEqual(status?.claude?.accounts?.count, 2)
-        XCTAssertEqual(fake.calls, [["status", "--json", "--no-usage", "--lock-wait", "10"]])
+        // Sem --no-usage: ele devolve key_invalid=false para toda conta.
+        XCTAssertEqual(fake.calls, [["status", "--json", "--max-age", "300", "--lock-wait", "5"]])
+        XCTAssertEqual(status?.opencode?.accounts?.first { $0.alias == "API key" }?.keyInvalid, true)
     }
 
     func testDiscoverReturnsNilWhenTheRunnerFailsOrTheSchemaIsOther() {
@@ -216,13 +218,26 @@ final class CcauthClientTests: XCTestCase {
         XCTAssertNil(make(other).discoverAccountsSync())
     }
 
-    func testDiscoverFeedsLastStatusButNotTheUsageCache() async throws {
+    func testDiscoverWithQuotaSeedsTheTwentySecondCache() async throws {
         let fake = FakeRunner()
-        let client = make(fake)
+        let clock = Clock()
+        let client = make(fake, clock: clock)
         XCTAssertNotNil(client.discoverAccountsSync())
         XCTAssertNotNil(client.lastStatus)
         _ = try await client.status()
-        XCTAssertEqual(fake.calls.count, 2, "a quota-less discovery must not answer status()")
+        XCTAssertEqual(fake.calls.count, 1, "a descoberta já trouxe a cota: o primeiro anel não roda o ccauth de novo")
+        clock.advance(21)
+        _ = try await client.status()
+        XCTAssertEqual(fake.calls.count, 2)
+    }
+
+    func testDiscoverWithoutQuotaDoesNotSeedTheCache() async throws {
+        let fake = FakeRunner()
+        fake.reply = (Data(#"{"schema":2,"ok":true,"claude":{"ok":true,"active":"A","accounts":[{"alias":"A"}]}}"#.utf8), 0)
+        let client = make(fake)
+        XCTAssertNotNil(client.discoverAccountsSync())
+        _ = try await client.status()
+        XCTAssertEqual(fake.calls.count, 2, "sem cota na descoberta, o anel precisa ler")
     }
 
     // MARK: - switchAccount

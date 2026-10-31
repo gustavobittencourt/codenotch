@@ -2,17 +2,72 @@
 import Foundation
 
 /// Que anéis o ccauth cria e o que eles substituem dos providers nativos.
+/// Uma conta lembrada entre aberturas do app.
+struct CcauthKnownAccount: Codable, Equatable {
+    let family: CcauthFamily
+    let alias: String
+    let email: String?
+    let keyInvalid: Bool
+}
+
 enum CcauthRings {
+    static let rememberedAccountsKey = "ccauth.rememberedAccounts"
+    private static let families: [CcauthFamily] = [.claude, .opencode]
+
+    /// As contas da última descoberta que deu certo (por família), para o app
+    /// ainda montar os anéis quando o ccauth está ocupado ou falha na abertura.
+    static func rememberedAccounts(defaults: UserDefaults = .standard) -> [CcauthKnownAccount] {
+        guard let data = defaults.data(forKey: rememberedAccountsKey) else { return [] }
+        return (try? JSONDecoder().decode([CcauthKnownAccount].self, from: data)) ?? []
+    }
+
+    /// Os anéis da abertura do app. Família lida com `ok:true` vale e é lembrada;
+    /// família que falhou (ou descoberta que falhou) usa a lista lembrada dela.
+    /// Sem nada lembrado, volta vazio e ficam os anéis nativos.
+    static func discover(client: CcauthClient = .shared, defaults: UserDefaults = .standard) -> [CcauthAccountProvider] {
+        let status = client.discoverAccountsSync()
+        let remembered = rememberedAccounts(defaults: defaults)
+        var known: [CcauthKnownAccount] = []
+        for family in families {
+            if let status, let fresh = knownAccounts(of: family, in: status) {
+                known += fresh
+            } else {
+                known += remembered.filter { $0.family == family }
+            }
+        }
+        if status != nil, let data = try? JSONEncoder().encode(known) {
+            defaults.set(data, forKey: rememberedAccountsKey)
+        }
+        return providers(from: known, client: client)
+    }
+
+    /// Nil quando o ccauth não leu a família (ausente ou `ok:false`).
+    private static func knownAccounts(of family: CcauthFamily, in status: CcauthStatus) -> [CcauthKnownAccount]? {
+        guard status.failure(family: family) == nil else { return nil }
+        switch family {
+        case .claude:
+            guard let family = status.claude else { return nil }
+            return (family.accounts ?? []).map {
+                CcauthKnownAccount(family: .claude, alias: $0.alias, email: $0.email, keyInvalid: false)
+            }
+        case .opencode:
+            guard let family = status.opencode else { return nil }
+            return (family.accounts ?? []).map {
+                CcauthKnownAccount(family: .opencode, alias: $0.alias, email: $0.email, keyInvalid: $0.keyInvalid == true)
+            }
+        }
+    }
+
     /// Um provider por conta. OpenCode com `key_invalid` não ganha anel: a chave
     /// foi rejeitada e não há cota a mostrar.
     static func providers(from status: CcauthStatus, client: CcauthClient = .shared) -> [CcauthAccountProvider] {
-        let claude = (status.claude?.accounts ?? []).map {
-            CcauthAccountProvider(family: .claude, alias: $0.alias, email: $0.email, client: client)
+        providers(from: families.flatMap { knownAccounts(of: $0, in: status) ?? [] }, client: client)
+    }
+
+    static func providers(from accounts: [CcauthKnownAccount], client: CcauthClient = .shared) -> [CcauthAccountProvider] {
+        accounts.filter { !$0.keyInvalid }.map {
+            CcauthAccountProvider(family: $0.family, alias: $0.alias, email: $0.email, client: client)
         }
-        let opencode = (status.opencode?.accounts ?? []).filter { $0.keyInvalid != true }.map {
-            CcauthAccountProvider(family: .opencode, alias: $0.alias, email: $0.email, client: client)
-        }
-        return claude + opencode
     }
 
     /// Com anel de conta Claude do ccauth, o anel nativo do Claude sai (seria a

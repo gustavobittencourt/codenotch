@@ -166,6 +166,93 @@ final class CcauthSwitchMenuTests: XCTestCase {
     }
 }
 
+final class CcauthDiscoveryTests: XCTestCase {
+    private var defaults: UserDefaults!
+    private var suite: String!
+
+    override func setUp() {
+        suite = "CcauthDiscoveryTests.\(UUID().uuidString)"
+        defaults = UserDefaults(suiteName: suite)
+        defaults.removePersistentDomain(forName: suite)
+    }
+
+    override func tearDown() {
+        defaults.removePersistentDomain(forName: suite)
+    }
+
+    private func client(replying json: String?) -> CcauthClient {
+        CcauthClient(runner: { _, _ in
+            guard let json else { throw CcauthError.notInstalled }
+            return (Data(json.utf8), 0)
+        })
+    }
+
+    private let claudeBusy = #"{"ok":false,"busy":true,"error":"ocupado"}"#
+    private func claudeOK(_ aliases: String...) -> String {
+        let accounts = aliases.map { #"{"alias":"\#($0)","email":"\#($0.lowercased())@example.com"}"# }.joined(separator: ",")
+        return #"{"ok":true,"active":"\#(aliases[0])","accounts":[\#(accounts)]}"#
+    }
+    private func opencodeOK(_ accounts: String) -> String {
+        #"{"ok":true,"available":true,"accounts":[\#(accounts)]}"#
+    }
+    private func status(claude: String, opencode: String) -> String {
+        #"{"schema":2,"ok":true,"claude":\#(claude),"opencode":\#(opencode)}"#
+    }
+
+    func testSuccessfulDiscoveryBuildsRingsAndRemembersTheAccounts() {
+        let json = status(claude: claudeOK("Allan", "Gustavo"),
+                          opencode: opencodeOK(#"{"alias":"Default"},{"alias":"API key","key_invalid":true}"#))
+        let providers = CcauthRings.discover(client: client(replying: json), defaults: defaults)
+        XCTAssertEqual(providers.map(\.id), ["ccauth-claude-allan", "ccauth-claude-gustavo", "ccauth-opencode-default"])
+        // A chave inválida não ganha anel, mas fica na lista lembrada com o aviso.
+        XCTAssertEqual(CcauthRings.rememberedAccounts(defaults: defaults).map(\.alias), ["Allan", "Gustavo", "Default", "API key"])
+        XCTAssertEqual(CcauthRings.rememberedAccounts(defaults: defaults).last?.keyInvalid, true)
+        XCTAssertEqual(CcauthRings.rememberedAccounts(defaults: defaults).first?.email, "allan@example.com")
+    }
+
+    func testFamilyThatFailedFallsBackToItsRememberedAccounts() {
+        let good = status(claude: claudeOK("Allan", "Gustavo"), opencode: opencodeOK(#"{"alias":"Default"}"#))
+        _ = CcauthRings.discover(client: client(replying: good), defaults: defaults)
+
+        let busy = status(claude: claudeBusy, opencode: opencodeOK(#"{"alias":"Default"},{"alias":"Personal"}"#))
+        let providers = CcauthRings.discover(client: client(replying: busy), defaults: defaults)
+        XCTAssertEqual(providers.map(\.id), [
+            "ccauth-claude-allan", "ccauth-claude-gustavo", "ccauth-opencode-default", "ccauth-opencode-personal"],
+            "Claude vem da lista lembrada; OpenCode, da leitura nova")
+        XCTAssertEqual(providers.first?.email, "allan@example.com")
+        // A lista lembrada da família que falhou não é apagada.
+        XCTAssertEqual(CcauthRings.rememberedAccounts(defaults: defaults).filter { $0.family == .claude }.count, 2)
+    }
+
+    func testFailedDiscoveryUsesTheRememberedAccountsOfBothFamilies() {
+        let good = status(claude: claudeOK("Allan"), opencode: opencodeOK(#"{"alias":"Default"}"#))
+        _ = CcauthRings.discover(client: client(replying: good), defaults: defaults)
+        let providers = CcauthRings.discover(client: client(replying: nil), defaults: defaults)
+        XCTAssertEqual(providers.map(\.id), ["ccauth-claude-allan", "ccauth-opencode-default"])
+    }
+
+    func testWithNothingRememberedAFailedDiscoveryLeavesTheNativeRings() {
+        let providers = CcauthRings.discover(client: client(replying: nil), defaults: defaults)
+        XCTAssertTrue(providers.isEmpty)
+        XCTAssertFalse(CcauthRings.replacesNativeClaude(providers))
+        XCTAssertFalse(CcauthRings.replacesNativeOpenCode(providers))
+    }
+
+    func testAnHealthyFamilyWithoutAccountsForgetsTheOldOnes() {
+        let good = status(claude: claudeOK("Allan"), opencode: opencodeOK(#"{"alias":"Default"}"#))
+        _ = CcauthRings.discover(client: client(replying: good), defaults: defaults)
+        let emptied = status(claude: claudeOK("Allan"), opencode: opencodeOK(""))
+        let providers = CcauthRings.discover(client: client(replying: emptied), defaults: defaults)
+        XCTAssertEqual(providers.map(\.id), ["ccauth-claude-allan"], "ok:true é a palavra do ccauth: a conta saiu")
+    }
+
+    func testUnreadableRememberedDataIsTreatedAsNothingRemembered() {
+        defaults.set(Data("lixo".utf8), forKey: CcauthRings.rememberedAccountsKey)
+        XCTAssertEqual(CcauthRings.rememberedAccounts(defaults: defaults), [])
+        XCTAssertTrue(CcauthRings.discover(client: client(replying: nil), defaults: defaults).isEmpty)
+    }
+}
+
 final class CcauthRingsTests: XCTestCase {
     func testProvidersFollowTheStatusAndSkipTheInvalidKey() throws {
         let providers = CcauthRings.providers(from: try CcauthFixture.status())

@@ -117,21 +117,25 @@ final class CcauthClient: @unchecked Sendable {
     }
 
     /// A descoberta de contas na abertura do app, antes de existir o primeiro
-    /// anel: bloqueia até o ccauth responder. Sem cota (`--no-usage`), por isso
-    /// alimenta só `lastStatus` e nunca o cache que `status()` reaproveita.
+    /// anel: bloqueia até o ccauth responder. Lê do cache do ccauth (`--max-age 300`)
+    /// em vez de `--no-usage`, que devolve `key_invalid=false` para toda conta. Como
+    /// já traz a cota, semeia o cache de 20 s e o primeiro anel não roda o ccauth outra vez.
     func discoverAccountsSync() -> CcauthStatus? {
         let box = DiscoveryBox()
         let semaphore = DispatchSemaphore(value: 0)
         let runner = self.runner
         Task.detached {
             box.status = try? await Self.read(
-                ["status", "--json", "--no-usage", "--lock-wait", "10"], timeout: 30, runner: runner)
+                ["status", "--json", "--max-age", "300", "--lock-wait", "5"], timeout: 30, runner: runner)
             semaphore.signal()
         }
         // O runner já tem o próprio timeout; esta folga só evita travar a abertura
         // se ele não o respeitar.
         guard semaphore.wait(timeout: .now() + 40) == .success, let status = box.status else { return nil }
-        lock.withLock { latest = status }
+        lock.withLock {
+            latest = status
+            if status.hasQuota { cached = (status, now()) }
+        }
         latestSubject.send(status)
         return status
     }

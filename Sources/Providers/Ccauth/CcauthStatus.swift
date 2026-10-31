@@ -2,7 +2,7 @@
 import Foundation
 
 /// As famílias de conta que o `ccauth` gere. O valor cru é o subcomando da CLI.
-enum CcauthFamily: String, Equatable {
+enum CcauthFamily: String, Equatable, Codable {
     case claude
     case opencode
 }
@@ -71,6 +71,12 @@ extension CcauthStatus {
         guard state.ok == false else { return nil }
         let message = state.error.flatMap { $0.isEmpty ? nil : $0 } ?? "o ccauth não leu esta família"
         return (state.busy == true, message)
+    }
+
+    /// Se alguma conta traz cota (uma leitura com `--no-usage` não traz).
+    var hasQuota: Bool {
+        (claude?.accounts ?? []).contains { $0.quota != nil }
+            || (opencode?.accounts ?? []).contains { $0.quota != nil }
     }
 
     /// Este status, mas uma família que falhou agora não apaga a última que veio
