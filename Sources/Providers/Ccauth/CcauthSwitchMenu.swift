@@ -130,3 +130,6 @@ enum CcauthSwitchMenu {
     }
 }
 
+        // O app é de barra de menu: sem ativar, o alerta abre atrás das janelas ou sem foco.
+        NSApp.activate(ignoringOtherApps: true)
+        NSApp.activate(ignoringOtherApps: true)
