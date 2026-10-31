@@ -541,7 +541,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             statusItem.model = fleet.menuModel
             // Somebody's own click, so it is not answered from anything held:
             // see `UsageFreshness.fromSource`.
-            statusItem.onRefreshAll = { [weak store] in store?.refreshNow(freshness: .fromSource) }
+            statusItem.onRefreshAll = { [weak store] in
+                CcauthSwitchMenu.manualRefresh { store?.refreshNow(freshness: .fromSource) }
+            }
             statusItem.onLook = { [weak store] in store?.refreshBecauseSomeoneIsLooking() }
             // The menu's tick writes to the same preference Settings writes to,
             // and reads nothing back of its own: the sink below carries the new
@@ -983,10 +985,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
                 .store(in: &cancellables)
             store.start()
-            fleet.onRefresh = { [weak store] in store?.refreshNow(freshness: .fromSource) }
-            // Os mesmos passos de "Refresh now", depois de uma troca de conta.
+            fleet.onRefresh = { [weak store] in
+                _ = CcauthSwitchMenu.manualRefresh { store?.refreshNow(freshness: .fromSource) }
+            }
+            // Os mesmos passos de "Refresh now", depois de uma troca de conta
+            // (pelo menu do notch ou pelos Ajustes).
+            CcauthSwitchMenu.refreshHook = { [weak store] in store?.refreshNow(freshness: .fromSource) }
             fleet.dynamicMenuItems = {
-                CcauthSwitchMenu.menuEntries { [weak store] in store?.refreshNow(freshness: .fromSource) }
+                CcauthSwitchMenu.menuEntries(refresh: CcauthSwitchMenu.refreshHook)
             }
             fleet.onLook = { [weak store] in store?.refreshBecauseSomeoneIsLooking() }
             fleet.onRefreshProvider = { [weak store] id in

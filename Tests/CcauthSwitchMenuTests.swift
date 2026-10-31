@@ -244,6 +244,21 @@ final class CcauthSwitchMenuTests: XCTestCase {
         XCTAssertNil(CcauthSwitchMenu.inProgress[.claude])
     }
 
+    // MARK: - Refresh manual
+
+    func testManualRefreshDropsTheTwentySecondCacheBeforeRefreshing() async throws {
+        let recorder = Recorder()
+        let client = try await clientWithStatus(recorder)
+        let readsBefore = recorder.calls.filter { $0.first == "status" }.count
+        var ran = 0
+        CcauthSwitchMenu.manualRefresh(client: client) { ran += 1 }
+        XCTAssertEqual(ran, 1)
+        recorder.reply = (CcauthFixture.statusData, 0)
+        _ = try await client.status()
+        XCTAssertEqual(recorder.calls.filter { $0.first == "status" }.count, readsBefore + 1,
+                       "sem o invalidate, os 20 s de cache respondem e o ccauth nem é consultado")
+    }
+
     // MARK: - Conta já ativa
 
     func testSwitchingToTheAlreadyActiveAccountDoesNothing() async throws {

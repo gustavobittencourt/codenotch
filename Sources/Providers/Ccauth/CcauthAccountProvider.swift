@@ -11,8 +11,12 @@ struct CcauthAccountProvider: UsageProvider {
     let displayName: String
     let glyph: ProviderGlyph
     private let client: CcauthClient
+    /// Pede a troca para esta conta (o fluxo do menu); injetável para teste.
+    private let switchRequest: @MainActor (CcauthSwitchMenu.Item, CcauthClient) -> Void
 
-    init(family: CcauthFamily, alias: String, email: String?, client: CcauthClient = .shared) {
+    init(family: CcauthFamily, alias: String, email: String?, client: CcauthClient = .shared,
+         switchRequest: @escaping @MainActor (CcauthSwitchMenu.Item, CcauthClient) -> Void = CcauthSwitchMenu.request) {
+        self.switchRequest = switchRequest
         self.family = family
         self.alias = alias
         self.email = email
@@ -74,6 +78,14 @@ struct CcauthAccountProvider: UsageProvider {
             }
             return try account.snapshot(providerID: id)
         }
+    }
+
+    /// "Trocar…" dos Ajustes: o mesmo fluxo do menu do notch (confirmação + `ccauth switch`).
+    func presentAccountSwitch() {
+        let item = CcauthSwitchMenu.Item(family: family, alias: alias)
+        let request = switchRequest
+        let client = self.client
+        Task { @MainActor in request(item, client) }
     }
 
     func account() -> ProviderAccount? {

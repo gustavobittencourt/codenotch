@@ -480,4 +480,25 @@ final class CcauthClientTests: XCTestCase {
         _ = try await client.status()
         XCTAssertEqual(received.last?.claude?.accounts?.map(\.alias), ["Allan", "Gustavo"])
     }
+
+    // MARK: - "Trocar…" dos Ajustes
+
+    func testPresentAccountSwitchAsksForTheSwitchOfThatAccount() async throws {
+        let client = make(FakeRunner())
+        var requested: [CcauthSwitchMenu.Item] = []
+        let provider = CcauthAccountProvider(
+            family: .opencode, alias: "Default", email: nil, client: client,
+            switchRequest: { item, _ in requested.append(item) })
+        provider.presentAccountSwitch()
+        for _ in 0..<200 where requested.isEmpty { try await Task.sleep(nanoseconds: 10_000_000) }
+        XCTAssertEqual(requested, [CcauthSwitchMenu.Item(family: .opencode, alias: "Default")])
+    }
+
+    func testSettingsHintForCcauthAccountsDoesNotSendYouToAnotherTool() {
+        let route = SignInRoute.command("ccauth claude login", name: "ccauth")
+        XCTAssertEqual(route.switchHint, "Alterne a conta ativa pelo ccauth, aqui ou no terminal; o notch acompanha.")
+        let other = SignInRoute.command("codex login", name: "Codex")
+        XCTAssertEqual(other.switchHint, L10n.t("Switch accounts in the tool that owns it; the notch follows."),
+                       "os outros providers de linha de comando ficam como estavam")
+    }
 }

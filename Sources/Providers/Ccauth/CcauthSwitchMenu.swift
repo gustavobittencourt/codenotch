@@ -27,6 +27,25 @@ enum CcauthSwitchMenu {
     /// menu diz para qual conta). Só a thread principal mexe.
     @MainActor static var inProgress: [CcauthFamily: String] = [:]
 
+    /// O mesmo "Refresh now" do notch, que o AppDelegate preenche; serve à troca
+    /// pedida fora do menu (Ajustes), que não tem o store à mão.
+    @MainActor static var refreshHook: @MainActor () -> Void = {}
+
+    /// "Refresh now" é pedido de gente: o cache de 20 s do cliente não pode
+    /// responder por ele.
+    @MainActor @discardableResult
+    static func manualRefresh<Result>(client: CcauthClient = .shared, _ refresh: () -> Result) -> Result {
+        client.invalidate()
+        return refresh()
+    }
+
+    /// Começa o fluxo de confirmação + troca para um item (o do menu e o dos Ajustes).
+    @MainActor static func request(_ item: Item, client: CcauthClient) {
+        Task { @MainActor in
+            await run(item, client: client, refresh: refreshHook)
+        }
+    }
+
     static func familyName(_ family: CcauthFamily) -> String {
         family == .claude ? "Claude" : "OpenCode Go"
     }
@@ -116,6 +135,8 @@ enum CcauthSwitchMenu {
         panel.informativeText = alert.message
         panel.addButton(withTitle: alert.primary)   // botão padrão
         panel.addButton(withTitle: alert.cancel)
+        // O app é de barra de menu: sem ativar, o alerta abre atrás das janelas ou sem foco.
+        NSApp.activate(ignoringOtherApps: true)
         return panel.runModal() == .alertFirstButtonReturn
     }
 
@@ -126,10 +147,8 @@ enum CcauthSwitchMenu {
         panel.messageText = alert.title
         panel.informativeText = alert.message
         panel.addButton(withTitle: alert.primary)
+        NSApp.activate(ignoringOtherApps: true)
         panel.runModal()
     }
 }
 
-        // O app é de barra de menu: sem ativar, o alerta abre atrás das janelas ou sem foco.
-        NSApp.activate(ignoringOtherApps: true)
-        NSApp.activate(ignoringOtherApps: true)

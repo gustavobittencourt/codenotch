@@ -783,6 +783,13 @@ final class UsageStore: ObservableObject {
     func openAccountSource(providerID: String, switching: Bool = false) -> Bool {
         guard let provider = providers.first(where: { $0.id == providerID }) else { return false }
 
+        // ccauth troca a conta pelo próprio fluxo (confirmação + `ccauth switch`),
+        // em vez de abrir um terminal com o comando de login.
+        if switching, provider is CcauthAccountProvider {
+            provider.presentAccountSwitch()
+            return true
+        }
+
         switch provider.signInRoute {
         case .modal:
             if switching {

@@ -80,6 +80,8 @@ enum SignInRoute: Equatable {
         switch self {
         case .modal(let name):      return L10n.t("Sign out in the \(name) window to use another account.")
         case .openApp(_, let name): return L10n.t("Switch accounts in \(name); the notch follows.")
+        // ccauth troca a conta ativa pelo próprio notch (ver `CcauthSwitchMenu`).
+        case .command(_, "ccauth", _): return "Alterne a conta ativa pelo ccauth, aqui ou no terminal; o notch acompanha."
         case .guidance, .command:   return L10n.t("Switch accounts in the tool that owns it; the notch follows.")
         }
     }
