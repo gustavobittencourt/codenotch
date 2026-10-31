@@ -1251,6 +1251,9 @@ final class Preferences: ObservableObject {
     nonisolated static func isDefaultOnFamily(_ providerID: String) -> Bool {
         ClaudeProfile.isClaude(providerID: providerID)
             || CodexProfile.isCodex(providerID: providerID)
+            // Os anéis do ccauth substituem os nativos; sem isto o fork novo
+            // (domínio de preferências vazio) abriria com todos desligados.
+            || CcauthRings.isCcauth(providerID: providerID)
     }
 
     /// Model cells are `providerID:model:…`. A new loaded model is not a new

@@ -114,6 +114,8 @@ final class NotchFleet {
         didSet { menuModel.onFocusSession = onFocusSession }
     }
     var signInItems: [(title: String, action: () -> Void)] = []
+    /// Itens extras do menu, avaliados a cada abertura. Ver `CcauthSwitchMenu`.
+    var dynamicMenuItems: () -> [(title: String, action: () -> Void)] = { [] }
     /// An ⌥-drag on any one panel settled at a new offset. Persisting it is
     /// Preferences' job, same division `apply(edge:)` already keeps.
     var onReposition: ((CGFloat) -> Void)?
@@ -572,6 +574,7 @@ final class NotchFleet {
         controller.onReposition = onReposition
         controller.onMoveToEdge = onMoveToEdge
         controller.signInItems = signInItems
+        controller.dynamicMenuItems = { [weak self] in self?.dynamicMenuItems() ?? [] }
         controller.model.updateSnapshots(snapshots)
         controller.model.thinkingModels = thinkingModels
         controller.model.localActivities = mergedLocalActivities

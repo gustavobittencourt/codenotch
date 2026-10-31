@@ -18,6 +18,7 @@ final class NotchWindowController {
     /// Whether the panel is answering AppKit's private active-appearance
     /// question with yes — see `NotchPanel.claimsActiveAppearance`.
     var panelClaimsActiveAppearanceForTesting: Bool { panel?.claimsActiveAppearance ?? false }
+    func contextMenuForTesting() -> NSMenu { contextMenu() }
 
     /// Hooked up by the app delegate; drives the menu's "Refresh now".
     var onRefresh: (() -> Void)?
@@ -28,6 +29,8 @@ final class NotchWindowController {
     var onLook: (() -> Void)?
     /// One "Sign in to …" item per provider that needs a browser session.
     var signInItems: [(title: String, action: () -> Void)] = []
+    /// Itens extras, depois de "Refresh now"; avaliados a cada abertura do menu.
+    var dynamicMenuItems: () -> [(title: String, action: () -> Void)] = { [] }
     /// Driven by the notch's own chrome.
 
     /// Refetch a single provider, asked for by clicking its ring.
@@ -2004,6 +2007,18 @@ final class NotchWindowController {
         refresh.isEnabled = true
         menu.addItem(refresh)
 
+        for entry in dynamicMenuItems() {
+            let item = NSMenuItem(
+                title: entry.title,
+                action: #selector(MenuActions.dynamicItem(_:)),
+                keyEquivalent: ""
+            )
+            item.target = menuActions
+            item.representedObject = entry.action
+            item.isEnabled = true
+            menu.addItem(item)
+        }
+
         for (index, entry) in signInItems.enumerated() {
             let item = NSMenuItem(
                 title: entry.title,
@@ -2067,6 +2082,11 @@ final class MenuActions: NSObject {
     @objc func refreshNow(_ sender: Any?) { refresh() }
     @objc func togglePinned(_ sender: Any?) { pin() }
     @objc func openSettings(_ sender: Any?) { settings() }
+
+    /// A ação vem na própria entrada do menu, já avaliada na abertura.
+    @objc func dynamicItem(_ sender: Any?) {
+        ((sender as? NSMenuItem)?.representedObject as? () -> Void)?()
+    }
 
     @objc func signIn(_ sender: Any?) {
         guard let item = sender as? NSMenuItem else { return }
