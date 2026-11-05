@@ -39,6 +39,12 @@ final class CcauthSwitchMenuTests: XCTestCase {
         XCTAssertEqual(opencode.map(\.title), ["Alternar OpenCode Go para Default…"])
     }
 
+    func testExpiredLoginGetsNoSwitchItem() throws {
+        let status = try CcauthStatus.decode(Data(CcauthExpiredFixture.json.utf8))
+        let items = CcauthSwitchMenu.items(for: status)
+        XCTAssertEqual(items.map(\.alias), ["Bia"], "Allan e Personal expiraram; Gustavo e Default são as ativas")
+    }
+
     func testClaudeItemsComeBeforeOpenCodeItems() throws {
         let items = CcauthSwitchMenu.items(for: try CcauthFixture.status())
         XCTAssertEqual(items.map(\.alias), ["Allan", "Default"])
@@ -392,6 +398,21 @@ final class CcauthRingsTests: XCTestCase {
         XCTAssertEqual(providers.first?.email, "allan@example.com")
     }
 
+    func testExpiredLoginGetsNoRingInEitherFamily() throws {
+        let status = try CcauthStatus.decode(Data(CcauthExpiredFixture.json.utf8))
+        XCTAssertEqual(CcauthRings.providers(from: status).map(\.id), [
+            "ccauth-claude-bia", "ccauth-claude-gustavo", "ccauth-opencode-default",
+        ])
+    }
+
+    func testRememberedExpiredLoginStaysWithoutRing() {
+        let accounts = [
+            CcauthKnownAccount(family: .claude, alias: "Allan", email: nil, keyInvalid: false, loginExpired: true),
+            CcauthKnownAccount(family: .claude, alias: "Gustavo", email: nil, keyInvalid: false),
+        ]
+        XCTAssertEqual(CcauthRings.providers(from: accounts).map(\.id), ["ccauth-claude-gustavo"])
+    }
+
     func testFamiliesWithoutAccountsReplaceNothing() throws {
         let onlyClaude = try CcauthStatus.decode(Data(
             #"{"schema":2,"claude":{"accounts":[{"alias":"A","active":true}]},"opencode":{"available":false,"accounts":[]}}"#.utf8))
@@ -500,3 +521,17 @@ final class CcauthContextMenuTests: XCTestCase {
     }
 }
 
+
+/// Allan (Claude) e Personal (Go) com login vencido.
+enum CcauthExpiredFixture {
+    static let json = #"""
+    {"schema":2,"ok":true,
+     "claude":{"ok":true,"active":"Gustavo","accounts":[
+       {"alias":"Allan","login_expired":true,"quota":null},
+       {"alias":"Bia"},
+       {"alias":"Gustavo","active":true}]},
+     "opencode":{"ok":true,"available":true,"active":"Default","accounts":[
+       {"alias":"Personal","kind":"oauth","login_expired":true,"quota":null},
+       {"alias":"Default","kind":"oauth","active":true}]}}
+    """#
+}

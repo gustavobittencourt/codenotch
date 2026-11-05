@@ -321,6 +321,21 @@ final class CcauthStatusTests: XCTestCase {
         }
     }
 
+    func testExpiredLoginWithoutWindowsNeedsAuthInBothFamilies() throws {
+        let status = try CcauthStatus.decode(Data(CcauthExpiredFixture.json.utf8))
+        let claude = try XCTUnwrap(status.claude?.accounts?.first)
+        let opencode = try XCTUnwrap(status.opencode?.accounts?.first)
+        XCTAssertEqual(claude.loginExpired, true)
+        for attempt in [{ _ = try claude.snapshot(providerID: "ccauth-claude-allan") },
+                        { _ = try opencode.snapshot(providerID: "ccauth-opencode-personal") }] {
+            XCTAssertThrowsError(try attempt()) { error in
+                guard case UsageProviderError.needsAuth = error else {
+                    return XCTFail("expected needsAuth, got \(error)")
+                }
+            }
+        }
+    }
+
     func testOpenCodeWithoutWindowsAndValidKeyThrowsBadResponse() throws {
         let account = CcauthOpenCodeAccount(alias: "X", email: nil, active: false, keyInvalid: false, quota: nil)
         XCTAssertThrowsError(try account.snapshot(providerID: "ccauth-opencode-x")) { error in

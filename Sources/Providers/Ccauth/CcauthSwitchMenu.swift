@@ -51,16 +51,16 @@ enum CcauthSwitchMenu {
     }
 
     /// Uma entrada por conta que não é a ativa, Claude antes de OpenCode. Chave
-    /// OpenCode rejeitada não entra: trocar para ela falharia.
+    /// OpenCode rejeitada e login vencido não entram: trocar para eles falharia.
     static func items(for status: CcauthStatus?) -> [Item] {
         guard let status else { return [] }
         let claudeActive = status.activeAlias(family: .claude)
         let opencodeActive = status.activeAlias(family: .opencode)
         let claude = (status.claude?.accounts ?? [])
-            .filter { $0.alias != claudeActive }
+            .filter { $0.alias != claudeActive && $0.loginExpired != true }
             .map { Item(family: .claude, alias: $0.alias) }
         let opencode = (status.opencode?.accounts ?? [])
-            .filter { $0.alias != opencodeActive && $0.keyInvalid != true }
+            .filter { $0.alias != opencodeActive && $0.keyInvalid != true && $0.loginExpired != true }
             .map { Item(family: .opencode, alias: $0.alias) }
         return claude + opencode
     }

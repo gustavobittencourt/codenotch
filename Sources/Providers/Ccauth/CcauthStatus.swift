@@ -143,6 +143,8 @@ struct CcauthClaudeAccount: Decodable, Equatable {
     var active: Bool?
     var inUse: Bool?
     var loginExpiresAt: Date?
+    /// Login vencido: o ccauth manda sem quota e a conta não ganha anel.
+    var loginExpired: Bool?
     var quota: CcauthClaudeQuota?
 }
 
@@ -154,6 +156,7 @@ struct CcauthOpenCodeAccount: Decodable, Equatable {
     var workspace: String?
     var active: Bool?
     var loginExpiresAt: Date?
+    var loginExpired: Bool?
     var keyInvalid: Bool?
     var quota: CcauthOpenCodeQuota?
 }
@@ -181,7 +184,12 @@ extension CcauthClaudeAccount {
 
     func snapshot(providerID: String) throws -> ProviderSnapshot {
         let windows = self.windows
-        guard !windows.isEmpty else { throw UsageProviderError.badResponse(status: 0) }
+        guard !windows.isEmpty else {
+            // Login vencido depois da abertura do app: o anel pede login de novo.
+            throw loginExpired == true
+                ? UsageProviderError.needsAuth
+                : UsageProviderError.badResponse(status: 0)
+        }
         return ProviderSnapshot(
             id: providerID,
             displayName: alias,
@@ -215,8 +223,8 @@ extension CcauthOpenCodeAccount {
     func snapshot(providerID: String) throws -> ProviderSnapshot {
         let windows = self.windows
         guard !windows.isEmpty else {
-            // Chave rejeitada não é falha de leitura: pede login de novo.
-            throw keyInvalid == true
+            // Chave rejeitada ou login vencido não é falha de leitura: pede login de novo.
+            throw keyInvalid == true || loginExpired == true
                 ? UsageProviderError.needsAuth
                 : UsageProviderError.badResponse(status: 0)
         }
