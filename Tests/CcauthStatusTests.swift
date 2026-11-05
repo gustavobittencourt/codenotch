@@ -249,7 +249,7 @@ final class CcauthStatusTests: XCTestCase {
         XCTAssertEqual(snapshot.windows.map(\.usedFraction), [0.07, 0.68, 0.03])
         XCTAssertEqual(snapshot.windows.map(\.duration), [5 * 3600, 7 * 86400, 7 * 86400])
         XCTAssertEqual(snapshot.windows[0].resetsAt, try date("2026-10-31T09:59:59Z"))
-        XCTAssertEqual(snapshot.headlineID, "session")
+        XCTAssertEqual(snapshot.headlineID, "weekly_all", "o anel segue a janela mais apertada (68%)")
         XCTAssertEqual(snapshot.weeklyID, "weekly_all")
         XCTAssertEqual(snapshot.glyph, .claude)
         XCTAssertEqual(snapshot.fidelity, .official)
@@ -279,6 +279,26 @@ final class CcauthStatusTests: XCTestCase {
         XCTAssertEqual(snapshot.windows.map(\.id), ["session"])
     }
 
+    func testHeadlineIsTheTightestWindowEvenWithoutASessionWindow() throws {
+        let json = #"""
+        {"alias":"A","quota":{"session":null,"week":{"used_percent":35,"resets_at":null},
+         "fable":{"used_percent":10,"resets_at":null},"stale":false}}
+        """#
+        let account = try CcauthStatus.makeDecoder().decode(CcauthClaudeAccount.self, from: Data(json.utf8))
+        let snapshot = try account.snapshot(providerID: "ccauth-claude-a")
+        XCTAssertEqual(snapshot.headlineID, "weekly_all")
+        XCTAssertEqual(snapshot.headline?.usedFraction, 0.35)
+    }
+
+    func testHeadlineTieKeepsTheFirstWindow() throws {
+        let json = #"""
+        {"alias":"P","quota":{"rolling":{"used_percent":0,"resets_at":null},
+         "weekly":{"used_percent":0,"resets_at":null},"monthly":{"used_percent":0,"resets_at":null},"stale":false}}
+        """#
+        let account = try CcauthStatus.makeDecoder().decode(CcauthOpenCodeAccount.self, from: Data(json.utf8))
+        XCTAssertEqual(try account.snapshot(providerID: "ccauth-opencode-p").headlineID, "rolling")
+    }
+
     func testClaudeAccountWithoutAnyWindowThrowsBadResponse() throws {
         let account = CcauthClaudeAccount(alias: "A", email: nil, active: false, quota: nil)
         XCTAssertThrowsError(try account.snapshot(providerID: "ccauth-claude-a")) { error in
@@ -298,7 +318,7 @@ final class CcauthStatusTests: XCTestCase {
                        [L10n.t("5h limit"), L10n.t("Weekly limit"), L10n.t("Monthly limit")])
         XCTAssertEqual(snapshot.windows.map(\.usedFraction), [0, 0.43, 0.21])
         XCTAssertEqual(snapshot.windows.map(\.duration), [5 * 3600, 7 * 86400, nil])
-        XCTAssertEqual(snapshot.headlineID, "rolling")
+        XCTAssertEqual(snapshot.headlineID, "weekly", "o anel segue a janela mais apertada (43%)")
         XCTAssertEqual(snapshot.weeklyID, "weekly")
         XCTAssertEqual(snapshot.glyph, .opencode)
         XCTAssertEqual(snapshot.fidelity, .official)

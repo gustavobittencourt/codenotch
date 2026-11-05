@@ -197,7 +197,7 @@ extension CcauthClaudeAccount {
             fidelity: .official,
             status: ccauthStatus(stale: quota?.stale, fetchedAt: quota?.fetchedAt),
             windows: windows,
-            headlineID: "session",
+            headlineID: ccauthTightestWindowID(windows),
             weeklyID: "weekly_all",
             plan: plan
         )
@@ -235,11 +235,18 @@ extension CcauthOpenCodeAccount {
             fidelity: .official,
             status: ccauthStatus(stale: quota?.stale, fetchedAt: quota?.fetchedAt),
             windows: windows,
-            headlineID: "rolling",
+            headlineID: ccauthTightestWindowID(windows),
             weeklyID: "weekly",
             plan: plan
         )
     }
+}
+
+/// O anel do ccauth segue a janela com menos sobra: a de 5h parada (ou ausente)
+/// não esconde a semana ou o mês quase no fim. Empate fica com a primeira, a
+/// de 5h, para o número não trocar de janela à toa.
+private func ccauthTightestWindowID(_ windows: [LimitWindow]) -> String? {
+    windows.max { ($0.usedFraction ?? 0) < ($1.usedFraction ?? 0) }?.id
 }
 
 /// Janela `null` ou sem `used_percent` some do anel.
