@@ -909,6 +909,23 @@ final class AlwaysShowTests: XCTestCase {
         XCTAssertFalse(controller.model.isPinned, "clicking no longer unpins")
     }
 
+    /// Fork: the invisible-at-rest flag follows the chosen mode and nothing else.
+    func testInvisibleAtRestFollowsVisibilityMode() {
+        let controller = NotchWindowController()
+        controller.apply(.onHoverInvisible)
+        XCTAssertTrue(controller.model.invisibleAtRest)
+        XCTAssertFalse(controller.model.isExpanded)
+        XCTAssertFalse(controller.model.isAlwaysOn)
+
+        controller.apply(.onHover)
+        XCTAssertFalse(controller.model.invisibleAtRest)
+
+        controller.apply(.onHoverInvisible)
+        controller.apply(.alwaysShow)
+        XCTAssertFalse(controller.model.invisibleAtRest)
+        XCTAssertTrue(controller.model.isExpanded)
+    }
+
     /// And so does hiding — a pinned notch that is ordered out still counts as
     /// held open, and would refuse to fold if it came back.
     func testHidingClearsBothHolds() {

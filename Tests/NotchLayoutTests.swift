@@ -995,7 +995,7 @@ final class NotchVisibilityTests: XCTestCase {
     }
 
     func testEveryModeIsOfferedAndNamed() {
-        XCTAssertEqual(NotchVisibility.allCases.count, 3)
+        XCTAssertEqual(NotchVisibility.allCases.count, 4)
         for mode in NotchVisibility.allCases {
             XCTAssertFalse(mode.title.isEmpty)
             XCTAssertFalse(mode.explanation.isEmpty)

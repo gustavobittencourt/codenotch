@@ -1764,6 +1764,7 @@ final class NotchWindowController {
 
     func apply(_ visibility: NotchVisibility) {
         self.visibility = visibility
+        model.invisibleAtRest = visibility == .onHoverInvisible
         // A standing choice outranks a peek that happens to be in flight.
         peekWork?.cancel()
         peekWork = nil
@@ -1780,7 +1781,7 @@ final class NotchWindowController {
             foldWork?.cancel()
             foldWork = nil
             withAnimation(NotchMotion.unfold) { model.isExpanded = true }
-        case .onHover:
+        case .onHover, .onHoverInvisible:
             if !Runtime.isUnderTest { panel?.orderFrontRegardless() }
             model.isPinned = false
             model.isAlwaysOn = false

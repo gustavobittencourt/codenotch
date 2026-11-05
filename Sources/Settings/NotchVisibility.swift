@@ -11,6 +11,10 @@ enum NotchVisibility: String, CaseIterable, Identifiable {
     case alwaysShow
     /// A pill at the edge that unfolds when the pointer reaches it. The default.
     case onHover
+    /// Fork: like `onHover`, but the folded pill is fully transparent. The
+    /// pointer still opens it (the hover area is unchanged); at rest nothing is
+    /// drawn.
+    case onHoverInvisible
     /// Nothing on screen at all.
     case hidden
 
@@ -20,6 +24,7 @@ enum NotchVisibility: String, CaseIterable, Identifiable {
         switch self {
         case .alwaysShow: return L10n.t("Always show")
         case .onHover:    return L10n.t("Show on hover")
+        case .onHoverInvisible: return L10n.t("Show on hover (invisible)")
         case .hidden:     return L10n.t("Hide")
         }
     }
@@ -30,6 +35,8 @@ enum NotchVisibility: String, CaseIterable, Identifiable {
             return L10n.t("The notch stays open with every reading visible.")
         case .onHover:
             return L10n.t("A small pill at the screen edge that opens when you reach it.")
+        case .onHoverInvisible:
+            return L10n.t("Nothing is drawn at the screen edge until the pointer reaches it, then the notch opens.")
         case .hidden:
             // Names the menu bar route: with the notch off screen the readings
             // live in the menu bar menu instead, so Hide plus App icon "Menu

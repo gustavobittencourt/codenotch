@@ -7,6 +7,9 @@ struct NotchRootView: View {
     @Environment(\.codenotchHeadlessGlass) private var headlessGlass
     @Environment(\.colorScheme) private var colorScheme
 
+    private static let restFadeIn = Animation.easeOut(duration: 0.08)
+    private static let restFadeOut = Animation.easeIn(duration: 0.25).delay(0.6)
+
     var body: some View {
         // Measured rather than assumed: the panel's real size is whatever
         // AppKit settled on, and the notch has to sit flush against *that*
@@ -196,6 +199,11 @@ struct NotchRootView: View {
             .frame(width: proxy.size.width, height: proxy.size.height)
         }
         .animation(motion(NotchMotion.unfold), value: model.isExpanded)
+        // Fork: invisible at rest. Appears at once when the notch opens; on
+        // folding, waits for the fold spring to land before fading out.
+        .opacity(model.invisibleAtRest && !model.isExpanded ? 0 : 1)
+        .animation(motion(model.isExpanded ? Self.restFadeIn : Self.restFadeOut),
+                   value: model.invisibleAtRest && !model.isExpanded)
         .tint(model.accentColor.color)
         .environment(\.codenotchAccentColor, model.accentColor.color)
         // The drawn style, not the chosen one: on the top edge the dock style

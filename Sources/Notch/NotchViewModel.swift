@@ -104,6 +104,10 @@ final class NotchViewModel: ObservableObject {
     /// toggles a pin; only Settings moves this.
     @Published var isAlwaysOn = false
 
+    /// Fork: the folded pill is not drawn (`NotchVisibility.onHoverInvisible`).
+    /// Only affects opacity; the hover area is still the pill's rect.
+    @Published var invisibleAtRest = false
+
     /// Providers with a fetch in flight, driven by the store.
     @Published var refreshing: Set<String> = []
     /// Bumped each time the settings orb is clicked, by either route.
