@@ -188,6 +188,27 @@ final class CursorGeometryTests: XCTestCase {
         try assertPublishedLiveRectIsCurrent(controller)
     }
 
+    /// Moves away from a folded notch skip the geometry after the first one,
+    /// and the move that comes back onto the pill still opens it.
+    func testPointerEventsAwayFromAFoldedNotchAreSkippedButReturningOpensIt() throws {
+        XCTAssertFalse(NotchWindowController.skipsPointerEvent(outside: true, wasOutside: false))
+        XCTAssertTrue(NotchWindowController.skipsPointerEvent(outside: true, wasOutside: true))
+        XCTAssertFalse(NotchWindowController.skipsPointerEvent(outside: false, wasOutside: true))
+
+        let controller = NotchWindowController()
+        controller.show()
+        defer { controller.stop() }
+        let frame = try XCTUnwrap(controller.panelFrameForTesting)
+        let wake = geometry(controller.model, size: frame.size).pillRect
+        controller.pointerLocation = { CGPoint(x: frame.minX - 400, y: frame.minY - 400) }
+        controller.pointerEventMoved()
+        controller.pointerEventMoved()
+        XCTAssertFalse(controller.model.isExpanded)
+        controller.pointerLocation = { CGPoint(x: frame.minX + wake.midX, y: frame.maxY - wake.midY) }
+        controller.pointerEventMoved()
+        XCTAssertTrue(controller.model.isExpanded)
+    }
+
     func testHoverRefreshesGeometryAfterSynchronousOnLook() throws {
         let controller = NotchWindowController()
         controller.model.snapshots = model().snapshots

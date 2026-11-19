@@ -1310,7 +1310,7 @@ final class NotchWindowController {
 
         let events: NSEvent.EventTypeMask = [.mouseMoved, .leftMouseDragged]
         let handler: (NSEvent) -> Void = { [weak self] _ in
-            MainActor.assumeIsolated { self?.cursorMoved() }
+            MainActor.assumeIsolated { self?.pointerEventMoved() }
         }
         if let global = NSEvent.addGlobalMonitorForEvents(matching: events, handler: handler) {
             mouseMonitors.append(global)
@@ -1323,8 +1323,29 @@ final class NotchWindowController {
         }
     }
 
+    /// Mouse events arrive for every move anywhere on screen, and each full
+    /// evaluation rebuilds the notch geometry. Folded, the hover region is the
+    /// pill inside the panel, so once one move outside the panel has been
+    /// evaluated the next ones cannot change anything; the 0.3 s poll still
+    /// evaluates every state.
+    private var pointerIdleOutside = false
+    /// Where the pointer is, in screen coordinates. Tests place it.
+    var pointerLocation: () -> CGPoint = { NSEvent.mouseLocation }
+
+    func pointerEventMoved() {
+        guard let panel else { return }
+        let outside = !model.isExpanded && !panel.frame.contains(pointerLocation())
+        let skip = Self.skipsPointerEvent(outside: outside, wasOutside: pointerIdleOutside)
+        pointerIdleOutside = outside
+        if !skip { cursorMoved() }
+    }
+
+    static func skipsPointerEvent(outside: Bool, wasOutside: Bool) -> Bool {
+        outside && wasOutside
+    }
+
     private func localCursor(in frame: CGRect) -> CGPoint {
-        let mouse = NSEvent.mouseLocation
+        let mouse = pointerLocation()
         return CGPoint(x: mouse.x - frame.minX, y: frame.maxY - mouse.y)
     }
 
