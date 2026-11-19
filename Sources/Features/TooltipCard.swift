@@ -1323,11 +1323,15 @@ struct ProviderDetailContent: View {
                 }
             }
         }
-        // Background reloads are spaced out (`CostModel.quietReloadInterval`):
+        // Background reloads only run while a card is open (`CostModel.reloadSoon`):
         // the card that shows the numbers brings them up to date.
         .task(id: snapshot.id) {
             guard !Runtime.isUnderTest else { return }
+            CostModels.shownAccount = snapshot.id
             CostModels.model(for: snapshot.id)?.reload()
+        }
+        .onDisappear {
+            if CostModels.shownAccount == snapshot.id { CostModels.shownAccount = nil }
         }
     }
 }

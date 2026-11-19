@@ -118,8 +118,9 @@ final class CostModel: ObservableObject {
     /// A new turn or usage reading arrives every few seconds with many live
     /// sessions, and each reload re-runs the token queries over the whole
     /// history. Nobody reads the numbers until a card opens, which reloads on
-    /// its own (see `TooltipCard`), so these automatic reloads run at most
-    /// once per `quietReloadInterval`, the last one never dropped.
+    /// its own (see `TooltipCard`), so these automatic reloads only run while
+    /// this account's card is open, at most once per `quietReloadInterval`,
+    /// the last one never dropped.
     static let quietReloadInterval: TimeInterval = 60
     private var lastReload = Date.distantPast
     private var reloadPending = false
@@ -129,7 +130,7 @@ final class CostModel: ObservableObject {
     }
 
     func reloadSoon() {
-        guard !reloadPending else { return }
+        guard CostModels.shownAccount == account.id, !reloadPending else { return }
         let wait = Self.reloadDelay(since: lastReload, now: Date())
         if wait == 0 { reload(); return }
         reloadPending = true
@@ -230,6 +231,8 @@ enum CostModels {
     private static var byAccount: [String: CostModel] = [:]
     /// Fires whenever any model's rows or expansion change (panel re-measures).
     static let anyChange = PassthroughSubject<Void, Never>()
+    /// The account whose hover card is open, set by `TooltipCard`.
+    static var shownAccount: String?
     private static var subs: [String: [AnyCancellable]] = [:]
 
     static var all: [CostModel] {
