@@ -123,6 +123,17 @@ final class CodexActivityMonitor: ObservableObject, AgentActivityMonitor {
     /// How long after the last write a turn is still considered in flight.
     private let staleAfter: TimeInterval
     private var timer: Timer?
+    /// Set by the app: the timer scans at `ActivityPace`'s rate instead of on every tick.
+    var paced = false
+    private var lastTimedScan = Date.distantPast
+
+    private func tick() {
+        if paced {
+            guard ActivityPace.isDue(lastScan: lastTimedScan) else { return }
+            lastTimedScan = Date()
+        }
+        rescan()
+    }
 
     init(
         profile: CodexProfile = .default(),
@@ -141,7 +152,7 @@ final class CodexActivityMonitor: ObservableObject, AgentActivityMonitor {
     func start() {
         rescan()
         let timer = Timer(timeInterval: interval, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.rescan() }
+            MainActor.assumeIsolated { self?.tick() }
         }
         RunLoop.main.add(timer, forMode: .common)
         self.timer = timer

@@ -57,6 +57,17 @@ final class ClaudeSessionMonitor: ObservableObject, AgentActivityMonitor {
     private var source: DispatchSourceFileSystemObject?
     private var descriptor: CInt = -1
     private var livenessTimer: Timer?
+    /// Set by the app: the timer scans at `ActivityPace`'s rate instead of on every tick.
+    var paced = false
+    private var lastTimedScan = Date.distantPast
+
+    private func livenessTick() {
+        if paced {
+            guard ActivityPace.isDue(lastScan: lastTimedScan) else { return }
+            lastTimedScan = Date()
+        }
+        rescan()
+    }
     private var debounce: DispatchWorkItem?
     private var wakeObserver: NSObjectProtocol?
 
@@ -85,7 +96,7 @@ final class ClaudeSessionMonitor: ObservableObject, AgentActivityMonitor {
         watchDirectory()
 
         let timer = Timer(timeInterval: livenessInterval, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.rescan() }
+            MainActor.assumeIsolated { self?.livenessTick() }
         }
         RunLoop.main.add(timer, forMode: .common)
         livenessTimer = timer

@@ -544,7 +544,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             statusItem.onRefreshAll = { [weak store] in
                 CcauthSwitchMenu.manualRefresh { store?.refreshNow(freshness: .fromSource) }
             }
-            statusItem.onLook = { [weak store] in store?.refreshBecauseSomeoneIsLooking() }
+            statusItem.onLook = { [weak store] in
+                ActivityPace.looked()
+                store?.refreshBecauseSomeoneIsLooking()
+            }
             // The menu's tick writes to the same preference Settings writes to,
             // and reads nothing back of its own: the sink below carries the new
             // value to the item, and Settings — a published property away —
@@ -994,7 +997,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             fleet.dynamicMenuItems = {
                 CcauthSwitchMenu.menuEntries(refresh: CcauthSwitchMenu.refreshHook)
             }
-            fleet.onLook = { [weak store] in store?.refreshBecauseSomeoneIsLooking() }
+            fleet.onLook = { [weak store] in
+                ActivityPace.looked()
+                store?.refreshBecauseSomeoneIsLooking()
+            }
             fleet.onRefreshProvider = { [weak store] id in
                 await store?.refresh(providerID: id, freshness: .fromSource)?.value
             }
@@ -1036,6 +1042,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 directory: profile.sessionsDirectory,
                 projects: profile.projectsDirectory
             )
+            monitor.paced = true
             claudeMonitors.append(monitor)
             claudeMonitorsByProfile.append((profile, monitor))
             monitors[profile.id] = monitor
@@ -1090,7 +1097,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Log.sessions.info("claude session ownership: \(named, privacy: .public) of \(total, privacy: .public) profiles name an account")
         }
         for profile in codexProfiles {
-            monitors[profile.id] = CodexActivityMonitor(profile: profile)
+            let codex = CodexActivityMonitor(profile: profile)
+            codex.paced = true
+            monitors[profile.id] = codex
         }
 
         // The `/usage` probe is a Claude Code process too, and files a session
