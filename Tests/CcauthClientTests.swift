@@ -42,7 +42,7 @@ final class CcauthClientTests: XCTestCase {
         let fake = FakeRunner()
         let status = try await make(fake).status()
         XCTAssertEqual(status.schema, 2)
-        XCTAssertEqual(fake.calls, [["status", "--json", "--max-age", "60", "--lock-wait", "30"]])
+        XCTAssertEqual(fake.calls, [["status", "--json", "--max-age", "300", "--lock-wait", "30"]])
     }
 
     func testConcurrentStatusCallsShareOneRun() async throws {
@@ -56,12 +56,12 @@ final class CcauthClientTests: XCTestCase {
         XCTAssertEqual(fake.calls.count, 1)
     }
 
-    func testStatusIsReusedForTwentySecondsThenRefetched() async throws {
+    func testStatusIsReusedForFiveMinutesThenRefetched() async throws {
         let fake = FakeRunner()
         let clock = Clock()
         let client = make(fake, clock: clock)
         _ = try await client.status()
-        clock.advance(19)
+        clock.advance(299)
         _ = try await client.status()
         XCTAssertEqual(fake.calls.count, 1)
         clock.advance(2)
@@ -218,7 +218,7 @@ final class CcauthClientTests: XCTestCase {
         XCTAssertNil(make(other).discoverAccountsSync())
     }
 
-    func testDiscoverWithQuotaSeedsTheTwentySecondCache() async throws {
+    func testDiscoverWithQuotaSeedsTheFiveMinuteCache() async throws {
         let fake = FakeRunner()
         let clock = Clock()
         let client = make(fake, clock: clock)
@@ -226,7 +226,10 @@ final class CcauthClientTests: XCTestCase {
         XCTAssertNotNil(client.lastStatus)
         _ = try await client.status()
         XCTAssertEqual(fake.calls.count, 1, "a descoberta já trouxe a cota: o primeiro anel não roda o ccauth de novo")
-        clock.advance(21)
+        clock.advance(299)
+        _ = try await client.status()
+        XCTAssertEqual(fake.calls.count, 1)
+        clock.advance(2)
         _ = try await client.status()
         XCTAssertEqual(fake.calls.count, 2)
     }

@@ -27,7 +27,8 @@ enum CcauthError: Error, Equatable, LocalizedError {
 ///
 /// Um cliente só para o app inteiro. Cada anel pergunta pelo status, mas a
 /// leitura é uma só: chamadas concorrentes esperam a mesma execução e o
-/// resultado vale por 20 s.
+/// resultado vale por 5 min. A quota não anda mais rápido que isso, e cada
+/// leitura é um processo Python (~0,34 s de CPU) mais as chamadas de rede.
 final class CcauthClient: @unchecked Sendable {
     /// Roda `ccauth <args>` e devolve stdout e o código de saída. Lança
     /// `CcauthError` quando não consegue executar ou estoura `timeout`.
@@ -35,7 +36,7 @@ final class CcauthClient: @unchecked Sendable {
 
     static let shared = CcauthClient()
 
-    private static let cacheLifetime: TimeInterval = 20
+    private static let cacheLifetime: TimeInterval = 300
 
     private let runner: Runner
     private let now: () -> Date
@@ -78,7 +79,7 @@ final class CcauthClient: @unchecked Sendable {
                 let status: CcauthStatus
                 do {
                     status = try await Self.read(
-                        ["status", "--json", "--max-age", "60", "--lock-wait", "30"], timeout: 60, runner: runner)
+                        ["status", "--json", "--max-age", "300", "--lock-wait", "30"], timeout: 60, runner: runner)
                 } catch {
                     // Falha não é guardada: a próxima chamada tenta de novo.
                     self.lock.withLock { if self.generation == started { self.inflight = nil } }
@@ -119,7 +120,7 @@ final class CcauthClient: @unchecked Sendable {
     /// A descoberta de contas na abertura do app, antes de existir o primeiro
     /// anel: bloqueia até o ccauth responder. Lê do cache do ccauth (`--max-age 300`)
     /// em vez de `--no-usage`, que devolve `key_invalid=false` para toda conta. Como
-    /// já traz a cota, semeia o cache de 20 s e o primeiro anel não roda o ccauth outra vez.
+    /// já traz a cota, semeia o cache de 5 min e o primeiro anel não roda o ccauth outra vez.
     func discoverAccountsSync() -> CcauthStatus? {
         let box = DiscoveryBox()
         let semaphore = DispatchSemaphore(value: 0)

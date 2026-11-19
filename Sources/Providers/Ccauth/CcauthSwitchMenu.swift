@@ -31,7 +31,7 @@ enum CcauthSwitchMenu {
     /// pedida fora do menu (Ajustes), que não tem o store à mão.
     @MainActor static var refreshHook: @MainActor () -> Void = {}
 
-    /// "Refresh now" é pedido de gente: o cache de 20 s do cliente não pode
+    /// "Refresh now" é pedido de gente: o cache de 5 min do cliente não pode
     /// responder por ele.
     @MainActor @discardableResult
     static func manualRefresh<Result>(client: CcauthClient = .shared, _ refresh: () -> Result) -> Result {
