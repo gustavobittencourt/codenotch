@@ -290,7 +290,7 @@ CI_DMG     := $(CI_DIR)/$(APP_NAME)-$(VERSION)-unsigned.dmg
 # directory, not the working directory.
 CI_ENTITLEMENTS := $(CURDIR)/$(CI_DIR)/adhoc.entitlements
 
-.PHONY: build-ci dmg-ci
+.PHONY: build-ci dmg-ci install-adhoc
 
 # `build`, not `archive` + `-exportArchive`: exporting reads ExportOptions.plist
 # and re-signs for distribution, which needs the Developer ID identity that is
@@ -324,7 +324,7 @@ build-ci: gen
 		'<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">' \
 		'<plist version="1.0"><dict>' \
 		'<key>com.apple.security.cs.disable-library-validation</key><true/>' \
-		'</dict></plist>' > $(CI_ENTITLEMENTS)
+		'</dict></plist>' > "$(CI_ENTITLEMENTS)"
 	xcodebuild -project $(PROJECT) -scheme $(SCHEME) -destination '$(DEST)' \
 		-configuration Release -derivedDataPath $(CI_DERIVED) \
 		CODE_SIGN_IDENTITY="-" CODE_SIGN_STYLE=Automatic DEVELOPMENT_TEAM="" \
@@ -341,13 +341,25 @@ build-ci: gen
 	@#
 	@# The outer bundle only: the framework beside it keeps the signature it
 	@# was built with, and re-sealing the app recomputes its hashes anyway.
-	codesign --force --options runtime --entitlements $(CI_ENTITLEMENTS) \
+	codesign --force --options runtime --entitlements "$(CI_ENTITLEMENTS)" \
 		--sign - $(CI_APP)
 	@# Proof rather than assumption, because this is invisible until someone
 	@# thinks to look: fail the build if the entitlement came back.
 	@codesign -d --entitlements - --xml $(CI_APP) 2>/dev/null \
 		| grep -q 'get-task-allow' \
 		&& { echo "get-task-allow survived the re-sign"; exit 1; } || true
+
+# `build-ci`'s ad-hoc app, installed: for a fork without any signing
+# identity, where `install` signs ad-hoc but without the entitlement above, so
+# dyld refuses Sparkle at launch. The old bundle goes to the Trash first:
+# `cp -R` onto an existing bundle merges the two, leaving files from the old
+# build inside the new one and breaking its seal.
+install-adhoc: build-ci
+	pkill -x $(APP_NAME) || true
+	@if [ -e /Applications/$(APP_NAME).app ]; then /usr/bin/trash /Applications/$(APP_NAME).app; fi
+	ditto $(CI_APP) /Applications/$(APP_NAME).app
+	codesign --verify --deep --strict /Applications/$(APP_NAME).app
+	open /Applications/$(APP_NAME).app
 
 # A disk image for the same reason releases ship one, plus one specific to CI:
 # GitHub's artifact upload zips whatever it is given and drops symlinks and the
