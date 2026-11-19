@@ -1323,6 +1323,12 @@ struct ProviderDetailContent: View {
                 }
             }
         }
+        // Background reloads are spaced out (`CostModel.quietReloadInterval`):
+        // the card that shows the numbers brings them up to date.
+        .task(id: snapshot.id) {
+            guard !Runtime.isUnderTest else { return }
+            CostModels.model(for: snapshot.id)?.reload()
+        }
     }
 }
 

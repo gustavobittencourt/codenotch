@@ -70,7 +70,7 @@ final class CostModel: ObservableObject {
         guard let indexer else { return }
         state = .waiting
         indexer.onChange = { [weak self] in
-            Task { @MainActor in self?.reload() }
+            Task { @MainActor in self?.reloadSoon() }
         }
         indexer.start()
         reload()
@@ -111,12 +111,39 @@ final class CostModel: ObservableObject {
             for s in samples {
                 store.recordSample(window: s.window, pct: s.pct, resetsAt: s.resetsAt)
             }
-            await MainActor.run { self.reload() }
+            await MainActor.run { self.reloadSoon() }
+        }
+    }
+
+    /// A new turn or usage reading arrives every few seconds with many live
+    /// sessions, and each reload re-runs the token queries over the whole
+    /// history. Nobody reads the numbers until a card opens, which reloads on
+    /// its own (see `TooltipCard`), so these automatic reloads run at most
+    /// once per `quietReloadInterval`, the last one never dropped.
+    static let quietReloadInterval: TimeInterval = 60
+    private var lastReload = Date.distantPast
+    private var reloadPending = false
+
+    static func reloadDelay(since last: Date, now: Date) -> TimeInterval {
+        max(0, last.addingTimeInterval(quietReloadInterval).timeIntervalSince(now))
+    }
+
+    func reloadSoon() {
+        guard !reloadPending else { return }
+        let wait = Self.reloadDelay(since: lastReload, now: Date())
+        if wait == 0 { reload(); return }
+        reloadPending = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + wait) { [weak self] in
+            MainActor.assumeIsolated {
+                self?.reloadPending = false
+                self?.reload()
+            }
         }
     }
 
     func reload() {
         guard let store else { return }
+        lastReload = Date()
         let range = (quotaBacked || self.range.window == nil) ? self.range : .month
         let pricer = PriceTable.shared.pricer
         let account = self.account

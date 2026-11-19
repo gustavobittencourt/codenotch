@@ -84,6 +84,15 @@ final class CostIndexerTests: XCTestCase {
         XCTAssertEqual(CostIndexer.passPlan(root: root, paths: ["/elsewhere/p/a.jsonl"], flags: [item]), .full)
     }
 
+    /// Background reloads wait out the quiet interval since the last one.
+    @MainActor func testBackgroundReloadsAreSpacedOut() {
+        let now = Date()
+        XCTAssertEqual(CostModel.reloadDelay(since: .distantPast, now: now), 0)
+        XCTAssertEqual(CostModel.reloadDelay(since: now.addingTimeInterval(-10), now: now),
+                       CostModel.quietReloadInterval - 10, accuracy: 0.001)
+        XCTAssertEqual(CostModel.reloadDelay(since: now.addingTimeInterval(-600), now: now), 0)
+    }
+
     /// End to end through FSEvents: an append after start() is indexed without a scan() call.
     func testWatcherIndexesAnAppendedLine() throws {
         let file = dir.appendingPathComponent("proj/s1.jsonl")
