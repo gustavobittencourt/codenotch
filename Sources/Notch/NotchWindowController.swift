@@ -1303,7 +1303,7 @@ final class NotchWindowController {
 
     private func startWatchingCursor() {
         let poll = Timer(timeInterval: 0.3, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.cursorMoved() }
+            MainActor.assumeIsolated { self?.pointerEventMoved() }
         }
         RunLoop.main.add(poll, forMode: .common)
         cursorTimer = poll
@@ -1323,11 +1323,12 @@ final class NotchWindowController {
         }
     }
 
-    /// Mouse events arrive for every move anywhere on screen, and each full
-    /// evaluation rebuilds the notch geometry. Folded, the hover region is the
-    /// pill inside the panel, so once one move outside the panel has been
-    /// evaluated the next ones cannot change anything; the 0.3 s poll still
-    /// evaluates every state.
+    /// Mouse events arrive for every move anywhere on screen, and the 0.3 s
+    /// poll runs all day; each full evaluation rebuilds the notch geometry.
+    /// Folded, the hover region is the pill inside the panel, so once one
+    /// pointer reading outside the panel has been evaluated the next ones
+    /// cannot change anything. A panel that grows under a still pointer puts
+    /// it inside, which is evaluated again.
     private var pointerIdleOutside = false
     /// Where the pointer is, in screen coordinates. Tests place it.
     var pointerLocation: () -> CGPoint = { NSEvent.mouseLocation }
