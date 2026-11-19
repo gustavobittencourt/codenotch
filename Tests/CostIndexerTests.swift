@@ -60,4 +60,47 @@ final class CostIndexerTests: XCTestCase {
         XCTAssertNotEqual(store.fileCursor(file.path)?.inode, oldInode)
         XCTAssertEqual(store.stats().events, 3)
     }
+
+    /// A watched change reads only the transcripts FSEvents named; walking the
+    /// whole history on every event kept a core busy with many live sessions.
+    func testWatchedPassVisitsOnlyTheNamedTranscripts() {
+        let root = "/r/projects"
+        let item = UInt32(kFSEventStreamEventFlagItemModified | kFSEventStreamEventFlagItemIsFile)
+        let plan = CostIndexer.passPlan(root: root,
+                                        paths: ["\(root)/p/a.jsonl", "\(root)/p/a.jsonl", "\(root)/p/notes.txt"],
+                                        flags: [item, item, item])
+        XCTAssertEqual(plan, .files(["\(root)/p/a.jsonl"]))
+    }
+
+    /// When FSEvents coalesced or dropped events, or names a path outside the
+    /// root (a symlinked root), only a full walk is safe.
+    func testDroppedOrForeignEventsFallBackToAFullScan() {
+        let root = "/r/projects"
+        let item = UInt32(kFSEventStreamEventFlagItemModified | kFSEventStreamEventFlagItemIsFile)
+        for flag in [kFSEventStreamEventFlagMustScanSubDirs, kFSEventStreamEventFlagUserDropped,
+                     kFSEventStreamEventFlagKernelDropped, kFSEventStreamEventFlagRootChanged] {
+            XCTAssertEqual(CostIndexer.passPlan(root: root, paths: ["\(root)/p"], flags: [UInt32(flag)]), .full)
+        }
+        XCTAssertEqual(CostIndexer.passPlan(root: root, paths: ["/elsewhere/p/a.jsonl"], flags: [item]), .full)
+    }
+
+    /// End to end through FSEvents: an append after start() is indexed without a scan() call.
+    func testWatcherIndexesAnAppendedLine() throws {
+        let file = dir.appendingPathComponent("proj/s1.jsonl")
+        try line("a").write(to: file, atomically: false, encoding: .utf8)
+        let indexer = try XCTUnwrap(CostIndexer(store: store, root: dir))
+        let first = expectation(description: "initial scan")
+        indexer.onChange = { first.fulfill() }
+        indexer.start()
+        wait(for: [first], timeout: 5)
+
+        let appended = expectation(description: "watched append")
+        indexer.onChange = { appended.fulfill() }
+        let handle = try FileHandle(forWritingTo: file)
+        try handle.seekToEnd()
+        try handle.write(contentsOf: Data(line("b").utf8))
+        try handle.close()
+        wait(for: [appended], timeout: 15)
+        XCTAssertEqual(store.stats().events, 2)
+    }
 }

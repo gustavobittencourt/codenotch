@@ -29,6 +29,9 @@ final class CostIndexer {
     private var stream: FSEventStreamRef?
     private var gitRootCache: [String: String] = [:]
     private var scanScheduled = false
+    /// What the next watched pass reads, gathered while the debounce waits.
+    private var pendingFull = false
+    private var pendingPaths = Set<String>()
 
     /// Called on the indexer queue after a pass that changed something.
     var onChange: (() -> Void)?
@@ -349,15 +352,22 @@ final class CostIndexer {
         var context = FSEventStreamContext(version: 0,
                                            info: Unmanaged.passUnretained(self).toOpaque(),
                                            retain: nil, release: nil, copyDescription: nil)
-        let callback: FSEventStreamCallback = { _, info, _, _, _, _ in
+        let callback: FSEventStreamCallback = { _, info, count, eventPaths, eventFlags, _ in
             guard let info else { return }
-            Unmanaged<CostIndexer>.fromOpaque(info).takeUnretainedValue().coalescedScan()
+            let indexer = Unmanaged<CostIndexer>.fromOpaque(info).takeUnretainedValue()
+            let paths = unsafeBitCast(eventPaths, to: NSArray.self) as? [String] ?? []
+            let flags = Array(UnsafeBufferPointer(start: eventFlags, count: count))
+            indexer.coalescedScan(CostIndexer.passPlan(root: indexer.root.path, paths: paths, flags: flags))
         }
+        // File-level events name each transcript that changed, so a watched pass
+        // reads those instead of walking (and stat-ing) the whole history.
+        let streamFlags = kFSEventStreamCreateFlagNoDefer | kFSEventStreamCreateFlagFileEvents
+            | kFSEventStreamCreateFlagUseCFTypes
         guard let s = FSEventStreamCreate(nil, callback, &context,
                                           [root.path] as CFArray,
                                           FSEventStreamEventId(kFSEventStreamEventIdSinceNow),
                                           2.0,   // latency doubles as debounce
-                                          FSEventStreamCreateFlags(kFSEventStreamCreateFlagNoDefer)) else { return }
+                                          FSEventStreamCreateFlags(streamFlags)) else { return }
         FSEventStreamSetDispatchQueue(s, queue)
         FSEventStreamStart(s)
         stream = s
@@ -371,16 +381,48 @@ final class CostIndexer {
         self.stream = nil
     }
 
+    enum PassPlan: Equatable {
+        case full                  // walk the whole root
+        case files([String])       // read only these transcripts
+    }
+
+    /// Which transcripts a batch of FSEvents asks to read. Dropped or coalesced
+    /// events, a changed root, or a path outside the root (a symlinked root
+    /// reports resolved paths) can hide a change, so those fall back to a full walk.
+    static func passPlan(root: String, paths: [String], flags: [FSEventStreamEventFlags]) -> PassPlan {
+        let rescan = FSEventStreamEventFlags(kFSEventStreamEventFlagMustScanSubDirs | kFSEventStreamEventFlagUserDropped
+            | kFSEventStreamEventFlagKernelDropped | kFSEventStreamEventFlagRootChanged)
+        let prefix = root.hasSuffix("/") ? root : root + "/"
+        var files: [String] = []
+        for (path, flag) in zip(paths, flags) {
+            if flag & rescan != 0 || !path.hasPrefix(prefix) { return .full }
+            if path.hasSuffix(".jsonl"), !files.contains(path) { files.append(path) }
+        }
+        return .files(files)
+    }
+
     /// FSEvents can fire repeatedly while a session is being written; collapse
-    /// bursts into one pass.
-    private func coalescedScan() {
+    /// bursts into one pass over everything they named.
+    private func coalescedScan(_ plan: PassPlan) {
+        if case .files(let paths) = plan, paths.isEmpty { return }
         queue.async { [weak self] in
-            guard let self, !self.scanScheduled else { return }
+            guard let self else { return }
+            switch plan {
+            case .full:              self.pendingFull = true
+            case .files(let paths):  self.pendingPaths.formUnion(paths)
+            }
+            guard !self.scanScheduled else { return }
             self.scanScheduled = true
             self.queue.asyncAfter(deadline: .now() + 1.5) { [weak self] in
                 guard let self else { return }
                 self.scanScheduled = false
-                self.performScan()
+                let full = self.pendingFull, paths = self.pendingPaths
+                self.pendingFull = false
+                self.pendingPaths = []
+                if full { self.performScan(); return }
+                var changed = false
+                for path in paths where self.indexFile(URL(fileURLWithPath: path)) { changed = true }
+                if changed { self.onChange?() }
             }
         }
     }
